@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BACKROOMS // control room</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a08; color: #c9b458; font-family: Consolas, monospace;
+      display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    }
+    .panel { width: 460px; border: 1px solid #8a7d3a; background: rgba(12,12,8,0.95); padding: 28px; }
+    h1 { font-size: 15px; letter-spacing: 3px; margin-bottom: 4px; }
+    .sub { font-size: 10px; color: #6b6340; margin-bottom: 20px; }
+    label { display: block; font-size: 10px; color: #6b6340; margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 1px; }
+    input, select {
+      width: 100%; padding: 8px; background: #12100a; border: 1px solid #3a3420;
+      color: #c9b458; font-family: inherit; font-size: 12px;
+    }
+    button {
+      width: 100%; padding: 10px; margin-top: 10px; font-family: inherit; font-size: 11px;
+      letter-spacing: 2px; cursor: pointer; border: 1px solid #8a7d3a; background: #1a180e; color: #c9b458;
+    }
+    button:hover { background: #262214; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+    #log { margin-top: 16px; font-size: 11px; color: #7dff9a; min-height: 60px; white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
+    .section { border-top: 1px solid #2a2618; margin-top: 20px; padding-top: 6px; }
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>CONTROL ROOM</h1>
+    <div class="sub">treasury &amp; signal simulation — the maze reacts</div>
+
+    <label>Admin password</label>
+    <input id="pw" type="password" placeholder="ADMIN_PASSWORD" />
+
+    <div class="section">
+      <label>Viral post — agent (blank = most notable) &amp; magnitude</label>
+      <div class="row">
+        <select id="viral-agent"><option value="">auto</option></select>
+        <input id="viral-mag" type="number" value="20" min="1" max="100" />
+      </div>
+      <button data-event="viral_post">⚡ VIRAL POST — lights on, doors unlock</button>
+
+      <div class="grid">
+        <button data-event="buyback">💡 BUYBACK — power returns</button>
+        <button data-event="burn">🔥 BURN — hallways collapse</button>
+        <button data-event="airdrop">📦 AIRDROP — crates drop</button>
+        <button data-event="liquidity_up">🌊 LIQUIDITY — the maze grows</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <label>Debug (dev only)</label>
+      <div class="row">
+        <input id="tp-x" type="number" placeholder="x" />
+        <input id="tp-y" type="number" placeholder="y" />
+      </div>
+      <button id="teleport">👹 TELEPORT MONSTER</button>
+      <div class="row">
+        <select id="dbg-agent"></select>
+        <input id="dbg-stress" type="number" value="90" min="0" max="100" />
+      </div>
+      <div class="grid">
+        <button id="force-stress">FORCE STRESS</button>
+        <button id="force-deceiving">FORCE DECEIVING</button>
+      </div>
+    </div>
+
+    <div id="log"></div>
+  </div>
+  <script type="module" src="/src/ui/admin.ts"></script>
+</body>
+</html>

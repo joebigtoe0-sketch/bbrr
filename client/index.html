@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>THE BACKROOMS — live feed</title>
+  <style>
+    :root {
+      --yellow: #c9b458;
+      --dim: #8a7d3a;
+      --bg: #0a0a08;
+      --panel: rgba(12, 12, 8, 0.92);
+      --green: #7dff9a;
+      --amber: #ffc46b;
+      --red: #ff5d5d;
+      --violet: #c99aff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+    body { font-family: 'Consolas', 'Courier New', monospace; color: var(--yellow); }
+    #app { position: absolute; inset: 0; }
+    #app canvas { display: block; }
+
+    /* ---------- sidebar ---------- */
+    #sidebar {
+      position: absolute; top: 0; left: 0; bottom: 0; width: 240px;
+      background: var(--panel); border-right: 1px solid #2a2618;
+      padding: 12px; overflow-y: auto; z-index: 10;
+      scrollbar-width: thin; scrollbar-color: #3a3420 transparent;
+    }
+    #sidebar h1 { font-size: 14px; letter-spacing: 3px; color: var(--yellow); margin-bottom: 2px; }
+    #sidebar .sub { font-size: 10px; color: #6b6340; margin-bottom: 12px; }
+    #sidebar h2 { font-size: 10px; letter-spacing: 2px; color: #6b6340; margin: 14px 0 6px; text-transform: uppercase; }
+    .agent-row {
+      padding: 6px; margin-bottom: 4px; cursor: pointer; border: 1px solid transparent;
+      border-radius: 2px; font-size: 11px;
+    }
+    .agent-row:hover { border-color: #3a3420; background: rgba(255, 255, 200, 0.03); }
+    .agent-row.tuned { border-color: var(--green); }
+    .agent-row .name { font-size: 12px; }
+    .agent-row .obj { color: #6b6340; font-size: 10px; }
+    .bar { height: 3px; background: #221f12; margin-top: 3px; border-radius: 2px; overflow: hidden; }
+    .bar > div { height: 100%; transition: width 0.5s; }
+    .bar.stress > div { background: var(--red); }
+    .bar.attention > div { background: var(--amber); }
+    .death-row { font-size: 10px; color: #6b5050; padding: 3px 6px; }
+    #spawn-btn {
+      width: 100%; padding: 10px; margin-top: 8px; background: #1a180e;
+      border: 1px solid var(--dim); color: var(--yellow); font-family: inherit;
+      font-size: 12px; letter-spacing: 2px; cursor: pointer;
+    }
+    #spawn-btn:hover { background: #262214; }
+
+    /* ---------- modal ---------- */
+    .modal-backdrop {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
+      display: none; align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel); border: 1px solid var(--dim); padding: 24px; width: 380px;
+    }
+    .modal h3 { font-size: 13px; letter-spacing: 2px; margin-bottom: 14px; }
+    .modal label { display: block; font-size: 10px; color: #6b6340; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .modal input, .modal select {
+      width: 100%; padding: 8px; background: #12100a; border: 1px solid #3a3420;
+      color: var(--yellow); font-family: inherit; font-size: 12px;
+    }
+    .modal .actions { margin-top: 18px; display: flex; gap: 8px; }
+    .modal button {
+      flex: 1; padding: 9px; font-family: inherit; font-size: 11px; letter-spacing: 1px;
+      cursor: pointer; border: 1px solid var(--dim); background: #1a180e; color: var(--yellow);
+    }
+    .modal button.primary { background: #2a2614; }
+    .modal .error { color: var(--red); font-size: 11px; margin-top: 8px; min-height: 14px; }
+
+    /* ---------- reader panel (CRT / notes) ---------- */
+    #reader {
+      position: absolute; right: 16px; top: 16px; width: 360px; max-height: 70vh;
+      background: rgba(4, 12, 6, 0.95); border: 1px solid #1f4a2a; z-index: 40;
+      display: none; flex-direction: column; box-shadow: 0 0 30px rgba(60, 255, 120, 0.08);
+    }
+    #reader.open { display: flex; }
+    #reader header {
+      padding: 8px 12px; font-size: 10px; letter-spacing: 2px; color: var(--green);
+      border-bottom: 1px solid #1f4a2a; display: flex; justify-content: space-between;
+    }
+    #reader header button { background: none; border: none; color: var(--green); cursor: pointer; font-family: inherit; }
+    #reader .lines { padding: 12px; overflow-y: auto; font-size: 12px; line-height: 1.7; color: var(--green); white-space: pre-wrap; text-shadow: 0 0 6px rgba(125,255,154,0.4); }
+
+    /* ---------- tune-in overlay ---------- */
+    #tunein {
+      position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%);
+      background: var(--panel); border: 1px solid var(--dim); padding: 10px 22px;
+      z-index: 45; display: none; font-size: 12px; letter-spacing: 2px; text-align: center;
+    }
+    #tunein.open { display: block; }
+    #tunein .freq { color: var(--green); font-size: 15px; margin-top: 4px; }
+    #tunein.static { animation: staticFlicker 0.08s infinite; }
+    @keyframes staticFlicker {
+      0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 0.9; }
+    }
+
+    /* ---------- toasts ---------- */
+    #toasts { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+    .toast {
+      background: var(--panel); border: 1px solid var(--dim); color: var(--amber);
+      padding: 8px 18px; margin-bottom: 6px; font-size: 11px; letter-spacing: 1px;
+      animation: toastIn 0.3s ease-out; text-align: center;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; } }
+
+    #hint { position: absolute; bottom: 10px; right: 14px; font-size: 10px; color: #4a4428; z-index: 5; }
+
+    /* ---------- CRT overlay: scanlines + vignette + subtle flicker ---------- */
+    #crt-overlay {
+      position: absolute; inset: 0; z-index: 3; pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.42) 100%),
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0px, rgba(0, 0, 0, 0.14) 1px, transparent 1px, transparent 3px);
+      animation: crtFlicker 4.3s infinite;
+    }
+    @keyframes crtFlicker {
+      0%, 100% { opacity: 1; }
+      97% { opacity: 1; }
+      97.5% { opacity: 0.82; }
+      98% { opacity: 1; }
+      98.6% { opacity: 0.9; }
+      99% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="crt-overlay"></div>
+
+  <div id="sidebar">
+    <h1>THE BACKROOMS</h1>
+    <div class="sub">live feed — do not trust the signs</div>
+    <button id="spawn-btn">+ SEND SOMEONE IN</button>
+    <h2>Inside now</h2>
+    <div id="agent-list"></div>
+    <h2>Did not make it</h2>
+    <div id="death-list"></div>
+  </div>
+
+  <div class="modal-backdrop" id="spawn-modal">
+    <div class="modal">
+      <h3>SEND SOMEONE IN</h3>
+      <label>Name (optional)</label>
+      <input id="spawn-name" maxlength="24" placeholder="they will be given one" />
+      <label>What drives them</label>
+      <select id="spawn-objective"></select>
+      <div class="error" id="spawn-error"></div>
+      <div class="actions">
+        <button id="spawn-cancel">CANCEL</button>
+        <button id="spawn-confirm" class="primary">SPAWN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reader">
+    <header><span id="reader-title">TERMINAL</span><button id="reader-close">[x]</button></header>
+    <div class="lines" id="reader-lines"></div>
+  </div>
+
+  <div id="tunein">
+    <div>TUNING INTO MIND FREQUENCY</div>
+    <div class="freq" id="tunein-freq">87.4 MHz</div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="hint">drag: pan · wheel: zoom · click someone: tune in · click terminals &amp; papers: read</div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
