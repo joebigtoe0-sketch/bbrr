@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_W, TILE_H, WALL_H } from './iso.js';
+import { TILE_W, TILE_H, WALL_H, WALL_DIA_W, WALL_DIA_H } from './iso.js';
 
 /**
  * All placeholder art is generated here with Graphics — no external assets.
@@ -52,50 +52,112 @@ export function generateTextures(scene: Phaser.Scene) {
     g.generateTexture(key, TILE_W, TILE_H);
   }
 
-  // ---- wall block (top diamond + two faces), feet-anchored ----
+  // ---- thin wall slab (75% footprint, standing on the carpet), feet-anchored ----
   const wallTex = (key: string, top: number, left: number, right: number, decorate?: (gg: Phaser.GameObjects.Graphics) => void) => {
     g.clear();
-    const H = TILE_H + WALL_H; // 72
-    // left face
+    const cx = TILE_W / 2; // 32
+    const dw = WALL_DIA_W / 2; // 24
+    const dh = WALL_DIA_H / 2; // 12
+    const H = WALL_DIA_H + WALL_H; // 48
+    // left face: top-left point -> top-bottom point -> base-bottom point -> base-left point
     g.fillStyle(left, 1);
     g.beginPath();
-    g.moveTo(0, TILE_H / 2);
-    g.lineTo(TILE_W / 2, TILE_H);
-    g.lineTo(TILE_W / 2, H);
-    g.lineTo(0, H - TILE_H / 2);
+    g.moveTo(cx - dw, dh);
+    g.lineTo(cx, WALL_DIA_H);
+    g.lineTo(cx, H);
+    g.lineTo(cx - dw, dh + WALL_H);
     g.closePath();
     g.fillPath();
     // right face
     g.fillStyle(right, 1);
     g.beginPath();
-    g.moveTo(TILE_W / 2, TILE_H);
-    g.lineTo(TILE_W, TILE_H / 2);
-    g.lineTo(TILE_W, H - TILE_H / 2);
-    g.lineTo(TILE_W / 2, H);
+    g.moveTo(cx, WALL_DIA_H);
+    g.lineTo(cx + dw, dh);
+    g.lineTo(cx + dw, dh + WALL_H);
+    g.lineTo(cx, H);
     g.closePath();
     g.fillPath();
     // top diamond
-    diamond(g, TILE_W / 2, TILE_H / 2, top);
+    g.fillStyle(top, 1);
+    g.beginPath();
+    g.moveTo(cx, 0);
+    g.lineTo(cx + dw, dh);
+    g.lineTo(cx, WALL_DIA_H);
+    g.lineTo(cx - dw, dh);
+    g.closePath();
+    g.fillPath();
     g.lineStyle(1, 0x6b5f2a, 0.8);
-    g.strokeLineShape(new Phaser.Geom.Line(0, TILE_H / 2, TILE_W / 2, TILE_H));
-    g.strokeLineShape(new Phaser.Geom.Line(TILE_W / 2, TILE_H, TILE_W, TILE_H / 2));
-    g.strokeLineShape(new Phaser.Geom.Line(TILE_W / 2, TILE_H, TILE_W / 2, H));
+    g.strokeLineShape(new Phaser.Geom.Line(cx - dw, dh, cx, WALL_DIA_H));
+    g.strokeLineShape(new Phaser.Geom.Line(cx, WALL_DIA_H, cx + dw, dh));
+    g.strokeLineShape(new Phaser.Geom.Line(cx, WALL_DIA_H, cx, H));
     if (decorate) decorate(g);
     g.generateTexture(key, TILE_W, H);
   };
   wallTex('wall', 0xcfc06a, 0x877b39, 0x9c8f45);
+
+  // ---- connected wall bars: thin segments running along a grid axis ----
+  // A bar spans tile-center to tile-center so adjacent bars join seamlessly.
+  const BAR_W = 88;
+  const BAR_H = 92;
+  const BAR_CY = 64; // tile-diamond center y inside the canvas
+  const barTex = (key: string, axis: 'ew' | 'ns') => {
+    g.clear();
+    const cx = BAR_W / 2;
+    const topC = { x: cx, y: BAR_CY - WALL_H };
+    // half-length vector along the axis; half-thickness vector perpendicular
+    const half = axis === 'ew' ? { x: 32, y: 16 } : { x: 32, y: -16 };
+    const th = axis === 'ew' ? { x: -6, y: 3 } : { x: 6, y: 3 };
+    const P1 = { x: topC.x - half.x + th.x, y: topC.y - half.y + th.y }; // near end, front side
+    const P2 = { x: topC.x + half.x + th.x, y: topC.y + half.y + th.y }; // far end, front side
+    const P3 = { x: topC.x + half.x - th.x, y: topC.y + half.y - th.y };
+    const P4 = { x: topC.x - half.x - th.x, y: topC.y - half.y - th.y };
+    const quad = (a: {x:number;y:number}, b: {x:number;y:number}, c2: {x:number;y:number}, d: {x:number;y:number}, color: number) => {
+      g.fillStyle(color, 1);
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.lineTo(c2.x, c2.y);
+      g.lineTo(d.x, d.y);
+      g.closePath();
+      g.fillPath();
+    };
+    const down = (p: { x: number; y: number }) => ({ x: p.x, y: p.y + WALL_H });
+    // long visible face (the +th side faces screen-down)
+    quad(P1, P2, down(P2), down(P1), axis === 'ew' ? 0x877b39 : 0x9c8f45);
+    // visible end cap: the end pointing screen-down (E for ew, S for ns)
+    if (axis === 'ew') quad(P2, P3, down(P3), down(P2), 0x9c8f45);
+    else quad(P4, P1, down(P1), down(P4), 0x877b39);
+    // top face
+    quad(P1, P2, P3, P4, 0xcfc06a);
+    g.lineStyle(1, 0x6b5f2a, 0.8);
+    g.strokeLineShape(new Phaser.Geom.Line(P1.x, P1.y, P2.x, P2.y));
+    g.generateTexture(key, BAR_W, BAR_H);
+  };
+  barTex('wallEW', 'ew');
+  barTex('wallNS', 'ns');
+
+  // sealed interior of solid wall regions: dark unwalkable carpet
+  g.clear();
+  diamond(g, TILE_W / 2, TILE_H / 2, 0x2e2a1c);
+  g.fillStyle(0x262214, 0.8);
+  for (let i = 0; i < 8; i++) {
+    const t = Math.random();
+    const u = Math.random();
+    g.fillRect(TILE_W / 2 + (t - u) * 26, TILE_H / 2 + (t + u - 1) * 12, 2, 1);
+  }
+  g.generateTexture('voidFloor', TILE_W, TILE_H);
   wallTex('doorOpen', 0xcfc06a, 0x877b39, 0x9c8f45, (gg) => {
     gg.fillStyle(0x1a160a, 1);
-    gg.fillRect(10, TILE_H + 6, 18, WALL_H - 10);
-    gg.fillRect(36, TILE_H + 6 - 9, 18, WALL_H - 10);
+    gg.fillRect(14, 26, 14, 16);
+    gg.fillRect(36, 20, 14, 16);
   });
   wallTex('doorLocked', 0xcfc06a, 0x6e6430, 0x7d7336, (gg) => {
     gg.fillStyle(0x241e0c, 1);
-    gg.fillRect(10, TILE_H + 6, 18, WALL_H - 10);
-    gg.fillRect(36, TILE_H + 6 - 9, 18, WALL_H - 10);
+    gg.fillRect(14, 26, 14, 16);
+    gg.fillRect(36, 20, 14, 16);
     gg.fillStyle(0xb3312e, 1);
-    gg.fillRect(8, TILE_H + 14, 22, 4);
-    gg.fillRect(34, TILE_H + 5, 22, 4);
+    gg.fillRect(12, 31, 18, 3);
+    gg.fillRect(34, 25, 18, 3);
   });
 
   // ---- rubble (flat) ----

@@ -144,58 +144,68 @@ export class Maze {
   }
 
   /**
-   * Deterministic chunk generation:
-   * 1. edge openings from hash(seed, edgeId) — neighbors always agree
-   * 2. interior room blobs + pillar clusters (~65% floor)
-   * 3. connectivity pass: flood-fill, carve L-corridors until one component
+   * Deterministic chunk generation — backrooms style: open damp floor
+   * partitioned by THIN (1-tile) wall lines with doorways, plus pillars.
+   *
+   * Border walls live on each chunk's TOP row and LEFT column only, so
+   * neighbors never double them. Whether a border wall exists and where its
+   * openings are comes from hash(seed, edgeId), which both neighbors compute
+   * identically.
    */
   private generateChunk(cx: number, cy: number): ChunkRuntime {
     const S = CHUNK_SIZE;
     const rng = rngFor(this.seed, 'chunk', cx, cy);
-    const tiles = new Uint8Array(S * S).fill(TILE.Wall);
+    const tiles = new Uint8Array(S * S).fill(TILE.Floor);
     const at = (x: number, y: number) => y * S + x;
 
-    // 2. room blobs
-    const blobCount = randInt(rng, 3, 5);
-    for (let b = 0; b < blobCount; b++) {
-      const w = randInt(rng, 4, 10);
-      const h = randInt(rng, 4, 10);
-      const x0 = randInt(rng, 1, S - w - 1);
-      const y0 = randInt(rng, 1, S - h - 1);
-      for (let y = y0; y < y0 + h; y++)
-        for (let x = x0; x < x0 + w; x++) tiles[at(x, y)] = TILE.Floor;
-    }
-    // pillars inside rooms
-    for (let y = 2; y < S - 2; y++) {
-      for (let x = 2; x < S - 2; x++) {
-        if (tiles[at(x, y)] === TILE.Floor && rng() < 0.05) tiles[at(x, y)] = TILE.Wall;
-      }
-    }
-
-    // 1. edge openings (canonical edge ids so both neighbors compute the same)
-    // top edge (shared with cy-1): H:cx:cy ; bottom edge: H:cx:cy+1
-    // left edge (shared with cx-1): V:cx:cy ; right edge: V:cx+1:cy
+    // border walls (top edge H:cx:cy owned by this chunk; left edge V:cx:cy)
     const applyEdge = (edgeId: string, place: (offset: number, tile: number) => void) => {
       const erng = rngFor(this.seed, 'edge', edgeId);
-      const count = erng() < 0.5 ? 1 : 2;
+      if (erng() > 0.8) return; // some borders are fully open expanses
+      for (let i = 0; i < S; i++) place(i, TILE.Wall);
+      const count = erng() < 0.4 ? 1 : 2;
       for (let i = 0; i < count; i++) {
         const offset = randInt(erng, 2, S - 3);
-        // first opening always walkable; second may be a door
         let tile: number = TILE.Floor;
         if (i > 0) {
           const roll = erng();
           if (roll < 0.15) tile = TILE.DoorLocked;
-          else if (roll < 0.3) tile = TILE.DoorOpen;
+          else if (roll < 0.35) tile = TILE.DoorOpen;
         }
+        // doorways are two tiles wide so they read clearly
         place(offset, tile);
+        place(Math.min(S - 1, offset + 1), tile === TILE.DoorLocked ? TILE.DoorLocked : TILE.Floor);
       }
     };
     applyEdge(`H:${cx}:${cy}`, (o, t) => (tiles[at(o, 0)] = t));
-    applyEdge(`H:${cx}:${cy + 1}`, (o, t) => (tiles[at(o, S - 1)] = t));
     applyEdge(`V:${cx}:${cy}`, (o, t) => (tiles[at(0, o)] = t));
-    applyEdge(`V:${cx + 1}:${cy}`, (o, t) => (tiles[at(S - 1, o)] = t));
 
-    // 3. connectivity: union all walkable cells into one component
+    // interior partitions: straight thin wall segments with a gap or doorway
+    const partitions = randInt(rng, 2, 4);
+    for (let s = 0; s < partitions; s++) {
+      const horizontal = rng() < 0.5;
+      const len = randInt(rng, 5, 12);
+      const x0 = randInt(rng, 2, S - 3);
+      const y0 = randInt(rng, 2, S - 3);
+      const gapAt = randInt(rng, 1, len - 2);
+      const gapTile = rng() < 0.25 ? TILE.DoorOpen : TILE.Floor;
+      for (let i = 0; i < len; i++) {
+        const x = horizontal ? x0 + i : x0;
+        const y = horizontal ? y0 : y0 + i;
+        if (x < 1 || y < 1 || x >= S || y >= S) break;
+        const isGap = i === gapAt || i === gapAt + 1;
+        tiles[at(x, y)] = isGap ? gapTile : TILE.Wall;
+      }
+    }
+
+    // pillars: lone supports scattered through the open floor
+    for (let y = 2; y < S - 2; y++) {
+      for (let x = 2; x < S - 2; x++) {
+        if (tiles[at(x, y)] === TILE.Floor && rng() < 0.02) tiles[at(x, y)] = TILE.Wall;
+      }
+    }
+
+    // connectivity: every walkable cell reachable (carves through partitions)
     this.connect(tiles, rng);
 
     const distFromOrigin = Math.max(Math.abs(cx), Math.abs(cy));

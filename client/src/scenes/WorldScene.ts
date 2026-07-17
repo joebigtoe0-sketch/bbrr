@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHUNK_SIZE, TILE, chunkKey } from '@backrooms/shared';
+import { CHUNK_SIZE, TILE, chunkKey, tileToChunk } from '@backrooms/shared';
 import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
@@ -17,6 +17,8 @@ import {
 interface ChunkView {
   rt: Phaser.GameObjects.RenderTexture;
   sprites: Phaser.GameObjects.GameObject[];
+  /** tile keys ("gx,gy") of wall/door sprites registered in wallIndex */
+  wallKeys: string[];
   version: number;
 }
 
@@ -27,11 +29,17 @@ interface AgentView {
   gy: number;
   tx: number;
   ty: number;
-  speech: Phaser.GameObjects.Text | null;
-  thoughtStack: number;
+}
+
+/** a text drifting upward until it leaves the top of the screen */
+interface Floater {
+  obj: Phaser.GameObjects.Text;
+  vy: number; // world px/s upward
+  born: number;
 }
 
 const DARK_TINT = 0x55566a;
+const FLOATER_DEPTH = 5_000_000;
 
 export class WorldScene extends Phaser.Scene {
   private store = new WorldStore();
@@ -43,6 +51,11 @@ export class WorldScene extends Phaser.Scene {
   private chaosView!: Phaser.GameObjects.Image;
   private tunedAgentId: string | null = null;
   private followAgentId: string | null = null;
+  private wallIndex = new Map<string, Phaser.GameObjects.Image[]>();
+  private fadedWalls = new Set<string>();
+  private floaters: Floater[] = [];
+  /** chunks whose views need a rebuild because a neighbor arrived/changed */
+  private rebuildQueue = new Set<string>();
   private subTimer = 0;
   private sidebarTimer = 0;
   private sidebarDirty = true;
@@ -89,7 +102,6 @@ export class WorldScene extends Phaser.Scene {
       for (const v of this.agentViews.values()) {
         v.sprite.destroy();
         v.label.destroy();
-        v.speech?.destroy();
       }
       this.agentViews.clear();
       for (const a of s.agents.values()) this.upsertAgent(a);
@@ -103,10 +115,16 @@ export class WorldScene extends Phaser.Scene {
         this.cameras.main.centerOn(p.sx, p.sy);
       }
     };
-    s.onChunk = (c) => this.buildChunkView(c);
+    s.onChunk = (c) => {
+      this.buildChunkView(c);
+      this.queueNeighborRebuilds(c.cx, c.cy);
+    };
     s.onChunkChanged = (key) => {
       const c = s.chunks.get(key);
-      if (c) this.buildChunkView(c);
+      if (c) {
+        this.buildChunkView(c);
+        this.queueNeighborRebuilds(c.cx, c.cy);
+      }
     };
     s.onAgent = (a) => {
       this.upsertAgent(a);
@@ -117,7 +135,6 @@ export class WorldScene extends Phaser.Scene {
       if (v) {
         v.sprite.destroy();
         v.label.destroy();
-        v.speech?.destroy();
         this.agentViews.delete(id);
       }
       if (this.tunedAgentId === id) this.tunedAgentId = null;
@@ -139,12 +156,38 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- chunk rendering ----------------
 
+  private tileAtGlobal(gx: number, gy: number): number {
+    const c = this.store.chunks.get(chunkKey(tileToChunk(gx), tileToChunk(gy)));
+    if (!c) return TILE.Void;
+    const lx = ((gx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const ly = ((gy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return c.tiles[ly * CHUNK_SIZE + lx]!;
+  }
+
+  private isWallish(gx: number, gy: number): boolean {
+    const t = this.tileAtGlobal(gx, gy);
+    return t === TILE.Wall || t === TILE.DoorOpen || t === TILE.DoorLocked;
+  }
+
+  private queueNeighborRebuilds(cx: number, cy: number) {
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const key = chunkKey(cx + dx, cy + dy);
+      if (this.chunkViews.has(key)) this.rebuildQueue.add(key);
+    }
+  }
+
   private buildChunkView(c: MazeChunk) {
     const key = chunkKey(c.cx, c.cy);
     const old = this.chunkViews.get(key);
     if (old) {
       old.rt.destroy();
       for (const sp of old.sprites) sp.destroy();
+      for (const wk of old.wallKeys) this.wallIndex.delete(wk);
       this.chunkViews.delete(key);
     }
 
@@ -160,6 +203,7 @@ export class WorldScene extends Phaser.Scene {
 
     const rt = this.add.renderTexture(rtX, rtY, rtW, rtH).setOrigin(0, 0).setDepth(FLOOR_DEPTH);
     const sprites: Phaser.GameObjects.GameObject[] = [];
+    const wallKeys: string[] = [];
     const dark = !c.lightsOn;
 
     for (let ly = 0; ly < S; ly++) {
@@ -170,24 +214,46 @@ export class WorldScene extends Phaser.Scene {
         const gy = origin.gy + ly;
         const p = gridToScreen(gx, gy);
 
-        if (t === TILE.Floor || t === TILE.DoorOpen || t === TILE.Rubble) {
-          const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
-          rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16);
-        }
+        // carpet everywhere — thin walls stand on it
+        const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
+        rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16);
+
         if (t === TILE.Wall) {
-          const img = this.add
-            .image(p.sx, p.sy + 16, 'wall')
-            .setOrigin(0.5, 1)
-            .setDepth(depthOf(gx, gy));
-          if (dark) img.setTint(DARK_TINT);
-          sprites.push(img);
+          const nE = this.isWallish(gx + 1, gy);
+          const nW = this.isWallish(gx - 1, gy);
+          const nN = this.isWallish(gx, gy - 1);
+          const nS = this.isWallish(gx, gy + 1);
+          if (nE && nW && nN && nS) {
+            // sealed interior of a solid region: dark carpet, no wall geometry
+            rt.draw('voidFloor', p.sx - rtX - 32, p.sy - rtY - 16);
+            continue;
+          }
+          const imgs: Phaser.GameObjects.Image[] = [];
+          // bars span center-to-center so runs join seamlessly (canvas center y = 64 of 92)
+          if (nE || nW)
+            imgs.push(this.add.image(p.sx, p.sy + 28, 'wallEW').setOrigin(0.5, 1));
+          if (nN || nS)
+            imgs.push(this.add.image(p.sx, p.sy + 28, 'wallNS').setOrigin(0.5, 1));
+          if (imgs.length === 0)
+            imgs.push(this.add.image(p.sx, p.sy + 12, 'wall').setOrigin(0.5, 1));
+          const wk = `${gx},${gy}`;
+          for (const img of imgs) {
+            img.setDepth(depthOf(gx, gy));
+            if (dark) img.setTint(DARK_TINT);
+            sprites.push(img);
+          }
+          this.wallIndex.set(wk, imgs);
+          wallKeys.push(wk);
         } else if (t === TILE.DoorOpen || t === TILE.DoorLocked) {
           const img = this.add
-            .image(p.sx, p.sy + 16, t === TILE.DoorOpen ? 'doorOpen' : 'doorLocked')
+            .image(p.sx, p.sy + 12, t === TILE.DoorOpen ? 'doorOpen' : 'doorLocked')
             .setOrigin(0.5, 1)
             .setDepth(depthOf(gx, gy));
           if (dark) img.setTint(DARK_TINT);
           sprites.push(img);
+          const wk = `${gx},${gy}`;
+          this.wallIndex.set(wk, [img]);
+          wallKeys.push(wk);
         } else if (t === TILE.Rubble) {
           const img = this.add
             .image(p.sx, p.sy, 'rubble')
@@ -215,7 +281,7 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     if (dark) rt.setTint(DARK_TINT);
-    this.chunkViews.set(key, { rt, sprites, version: c.version });
+    this.chunkViews.set(key, { rt, sprites, wallKeys, version: c.version });
   }
 
   private flickerChunk(cx: number, cy: number, on: boolean) {
@@ -402,7 +468,7 @@ export class WorldScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5);
-      v = { sprite, label, gx: a.x, gy: a.y, tx: a.x, ty: a.y, speech: null, thoughtStack: 0 };
+      v = { sprite, label, gx: a.x, gy: a.y, tx: a.x, ty: a.y };
       this.agentViews.set(a.id, v);
     }
     v.tx = a.x;
@@ -431,24 +497,36 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- thoughts & speech ----------------
 
+  /** spawn a text above an agent that drifts upward until it leaves the screen */
+  private spawnFloater(
+    x: number,
+    y: number,
+    text: string,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+    vy = 22,
+  ): Phaser.GameObjects.Text {
+    const t = this.add
+      .text(x + (Math.random() - 0.5) * 14, y, text, style)
+      .setOrigin(0.5, 1)
+      .setDepth(FLOATER_DEPTH)
+      .setAlpha(0);
+    this.tweens.add({ targets: t, alpha: 1, duration: 300 });
+    this.floaters.push({ obj: t, vy, born: this.time.now });
+    return t;
+  }
+
   private showSpeech(agentId: string, text: string) {
     const v = this.agentViews.get(agentId);
     if (!v) return;
-    v.speech?.destroy();
-    const t = this.add
-      .text(v.sprite.x, v.sprite.y - 46, `"${text}"`, {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '11px',
-        color: '#f2f2e0',
-        backgroundColor: '#12100acc',
-        padding: { x: 6, y: 3 },
-        wordWrap: { width: 200 },
-        align: 'center',
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(depthOf(v.gx, v.gy, 4));
-    v.speech = t;
-    this.tweens.add({ targets: t, alpha: 0, delay: 3800, duration: 700, onComplete: () => t.destroy() });
+    this.spawnFloater(v.sprite.x, v.sprite.y - 46, `"${text}"`, {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#f2f2e0',
+      backgroundColor: '#12100acc',
+      padding: { x: 6, y: 3 },
+      wordWrap: { width: 200 },
+      align: 'center',
+    });
   }
 
   private showThought(th: ThoughtEvent) {
@@ -475,11 +553,13 @@ export class WorldScene extends Phaser.Scene {
       color = '#c99aff';
     }
 
-    const stackOffset = (v.thoughtStack % 3) * 44;
-    v.thoughtStack++;
-    const baseY = v.sprite.y - 58 - stackOffset;
-    const t = this.add
-      .text(v.sprite.x, baseY, text, {
+    const baseY = v.sprite.y - 58;
+    const vy = th.mindState === 'panicked' ? 30 : 22;
+    const t = this.spawnFloater(
+      v.sprite.x,
+      baseY,
+      text,
+      {
         fontFamily: 'Consolas, monospace',
         fontSize: '12px',
         fontStyle: 'italic',
@@ -488,54 +568,28 @@ export class WorldScene extends Phaser.Scene {
         strokeThickness: 3,
         wordWrap: { width: 230 },
         align: 'center',
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(depthOf(v.gx, v.gy, 5))
-      .setAlpha(0);
-    const objs: Phaser.GameObjects.GameObject[] = [t];
-
+      },
+      vy,
+    );
     if (th.mindState === 'deceptive') {
-      const contradiction = this.add
-        .text(v.sprite.x, baseY + 13, `[but is ${th.actionLabel}]`, {
+      this.spawnFloater(
+        t.x,
+        baseY + 13,
+        `[but is ${th.actionLabel}]`,
+        {
           fontFamily: 'Consolas, monospace',
           fontSize: '10px',
           color: '#8a8a99',
           stroke: '#050503',
           strokeThickness: 2,
-        })
-        .setOrigin(0.5, 1)
-        .setDepth(depthOf(v.gx, v.gy, 5))
-        .setAlpha(0);
-      objs.push(contradiction);
-    }
-
-    for (const o of objs) {
-      this.tweens.add({ targets: o, alpha: 1, duration: 300 });
-      this.tweens.add({
-        targets: o,
-        y: '-=26',
-        delay: 600,
-        duration: 3600,
-        ease: 'Sine.easeOut',
-      });
-      this.tweens.add({
-        targets: o,
-        alpha: 0,
-        delay: 3600,
-        duration: 900,
-        onComplete: () => o.destroy(),
-      });
+        },
+        vy,
+      );
     }
     if (th.mindState === 'panicked') {
-      this.tweens.add({
-        targets: t,
-        x: '+=3',
-        yoyo: true,
-        repeat: 20,
-        duration: 40,
-      });
+      this.tweens.add({ targets: t, x: '+=3', yoyo: true, repeat: 40, duration: 40 });
     } else if (th.mindState === 'stressed') {
-      this.tweens.add({ targets: t, x: '+=1.5', yoyo: true, repeat: 12, duration: 70 });
+      this.tweens.add({ targets: t, x: '+=1.5', yoyo: true, repeat: 24, duration: 70 });
     }
   }
 
@@ -661,7 +715,6 @@ export class WorldScene extends Phaser.Scene {
       const p = gridToScreen(v.gx, v.gy);
       v.sprite.setPosition(p.sx, p.sy + 10).setDepth(depthOf(v.gx, v.gy, 2));
       v.label.setPosition(p.sx, p.sy - 32).setDepth(depthOf(v.gx, v.gy, 4));
-      if (v.speech) v.speech.setPosition(p.sx, p.sy - 46);
       const a = this.store.agents.get(id);
       if (a && a.mindState === 'panicked' && a.state !== 'dead') {
         v.sprite.x += (Math.random() - 0.5) * 1.2;
@@ -691,6 +744,49 @@ export class WorldScene extends Phaser.Scene {
         cam.scrollX += (target.sx - cam.width / 2 / 1 - cam.scrollX) * 0.06;
         cam.scrollY += (target.sy - cam.height / 2 / 1 - cam.scrollY) * 0.06;
       }
+    }
+
+    // floating texts drift upward and dissolve at the top of the screen
+    if (this.floaters.length > 0) {
+      const camTop = this.cameras.main.worldView.top;
+      for (let i = this.floaters.length - 1; i >= 0; i--) {
+        const f = this.floaters[i]!;
+        f.obj.y -= (f.vy * dt) / 1000;
+        const distToTop = f.obj.y - camTop;
+        if (distToTop < 110) f.obj.setAlpha(Math.max(0, distToTop - 20) / 90);
+        if (distToTop < 20 || this.time.now - f.born > 60000) {
+          f.obj.destroy();
+          this.floaters.splice(i, 1);
+        }
+      }
+    }
+
+    // walls standing in front of agents go translucent so they stay visible
+    {
+      const fade = new Set<string>();
+      for (const v of this.agentViews.values()) {
+        const tx = Math.floor(v.gx);
+        const ty = Math.floor(v.gy);
+        fade.add(`${tx + 1},${ty}`);
+        fade.add(`${tx},${ty + 1}`);
+        fade.add(`${tx + 1},${ty + 1}`);
+      }
+      for (const wk of this.fadedWalls) {
+        if (!fade.has(wk)) for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(1);
+      }
+      for (const wk of fade) {
+        for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(0.45);
+      }
+      this.fadedWalls = fade;
+    }
+
+    // chunks whose neighbors arrived/changed need their wall connections rebuilt
+    if (this.rebuildQueue.size > 0) {
+      for (const key of this.rebuildQueue) {
+        const c = this.store.chunks.get(key);
+        if (c && this.chunkViews.has(key)) this.buildChunkView(c);
+      }
+      this.rebuildQueue.clear();
     }
 
     // chunk subscriptions follow the camera
@@ -744,6 +840,7 @@ export class WorldScene extends Phaser.Scene {
         if (cx! < minCx - 3 || cx! > maxCx + 3 || cy! < minCy - 3 || cy! > maxCy + 3) {
           view2.rt.destroy();
           for (const sp of view2.sprites) sp.destroy();
+          for (const wk of view2.wallKeys) this.wallIndex.delete(wk);
           this.chunkViews.delete(key);
           this.store.dropChunk(key);
         }
