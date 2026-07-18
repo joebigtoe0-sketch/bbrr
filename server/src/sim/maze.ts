@@ -241,7 +241,8 @@ export class Maze {
     // ---- border wall lines (deterministic per shared edge id) ----
     const border = (edgeId: string, set: (i: number, v: number) => void) => {
       const erng = rngFor(this.seed, 'edge', edgeId);
-      if (erng() > 0.85) return; // occasional fully open border
+      // borders always exist so interior wall lines never end in open space;
+      // large halls come from the BSP early-stop instead
       for (let i = 0; i < S; i++) set(i, EDGE.Wall);
       // every opening in a wall line is a framed doorway (lockable by chaos,
       // unlockable by viral events); extra doorways are sometimes locked

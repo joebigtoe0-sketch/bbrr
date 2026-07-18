@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, chunkKey, tileToChunk } from '@backrooms/shared';
 import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
@@ -60,6 +60,8 @@ export class WorldScene extends Phaser.Scene {
   private fadedWalls = new Set<string>();
   private floaters: Floater[] = [];
   private monsterTrail = { gx: 0, gy: 0, queue: [] as { x: number; y: number }[] };
+  /** chunk views needing a rebuild because a neighbor arrived or relit */
+  private rebuildQueue = new Set<string>();
   private subTimer = 0;
   private sidebarTimer = 0;
   private sidebarDirty = true;
@@ -119,10 +121,16 @@ export class WorldScene extends Phaser.Scene {
         this.cameras.main.centerOn(p.sx, p.sy);
       }
     };
-    s.onChunk = (c) => this.buildChunkView(c);
+    s.onChunk = (c) => {
+      this.buildChunkView(c);
+      this.queueNeighborRebuilds(c.cx, c.cy);
+    };
     s.onChunkChanged = (key) => {
       const c = s.chunks.get(key);
-      if (c) this.buildChunkView(c);
+      if (c) {
+        this.buildChunkView(c);
+        this.queueNeighborRebuilds(c.cx, c.cy);
+      }
     };
     s.onAgent = (a) => {
       this.upsertAgent(a);
@@ -154,6 +162,53 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- chunk rendering ----------------
 
+  private queueNeighborRebuilds(cx: number, cy: number) {
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const key = chunkKey(cx + dx, cy + dy);
+      if (this.chunkViews.has(key)) this.rebuildQueue.add(key);
+    }
+  }
+
+  private chunkLight(cx: number, cy: number): number | null {
+    const c = this.store.chunks.get(chunkKey(cx, cy));
+    return c ? (c.lightsOn ? 1 : 0) : null;
+  }
+
+  /**
+   * Per-tile brightness: bilinear blend of the four nearest chunks' light
+   * states, so lit and dark sectors fade into each other instead of meeting
+   * at a hard chunk-diamond edge. Coordinates are float tile positions.
+   */
+  private brightnessAt(tx: number, ty: number): number {
+    const fx = tx / CHUNK_SIZE - 0.5;
+    const fy = ty / CHUNK_SIZE - 0.5;
+    const c0x = Math.floor(fx);
+    const c0y = Math.floor(fy);
+    const wx = fx - c0x;
+    const wy = fy - c0y;
+    const own = this.chunkLight(tileToChunk(Math.floor(tx)), tileToChunk(Math.floor(ty)));
+    const s = (cx: number, cy: number) => this.chunkLight(cx, cy) ?? own ?? 1;
+    return (
+      s(c0x, c0y) * (1 - wx) * (1 - wy) +
+      s(c0x + 1, c0y) * wx * (1 - wy) +
+      s(c0x, c0y + 1) * (1 - wx) * wy +
+      s(c0x + 1, c0y + 1) * wx * wy
+    );
+  }
+
+  private tintFor(b: number): number {
+    const t = Math.max(0, Math.min(1, b));
+    const r = Math.round(0x55 + (0xff - 0x55) * t);
+    const g = Math.round(0x56 + (0xff - 0x56) * t);
+    const bl = Math.round(0x6a + (0xff - 0x6a) * t);
+    return (r << 16) | (g << 8) | bl;
+  }
+
   private buildChunkView(c: MazeChunk) {
     const key = chunkKey(c.cx, c.cy);
     const old = this.chunkViews.get(key);
@@ -177,7 +232,6 @@ export class WorldScene extends Phaser.Scene {
     const rt = this.add.renderTexture(rtX, rtY, rtW, rtH).setOrigin(0, 0).setDepth(FLOOR_DEPTH);
     const sprites: Phaser.GameObjects.GameObject[] = [];
     const wallKeys: string[] = [];
-    const dark = !c.lightsOn;
 
     for (let ly = 0; ly < S; ly++) {
       for (let lx = 0; lx < S; lx++) {
@@ -188,15 +242,16 @@ export class WorldScene extends Phaser.Scene {
         const gy = origin.gy + ly;
         const p = gridToScreen(gx, gy);
 
-        // carpet everywhere — walls are planes on the edges between tiles
+        // carpet everywhere, lit per tile so light fades across sector borders
+        const tileTint = this.tintFor(this.brightnessAt(gx + 0.5, gy + 0.5));
         const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
-        rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16);
+        rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16, 1, tileTint);
         if (t === TILE.Rubble) {
           const img = this.add
             .image(p.sx, p.sy, 'rubble')
             .setOrigin(0.5, 0.5)
-            .setDepth(depthOf(gx, gy, -2));
-          if (dark) img.setTint(DARK_TINT);
+            .setDepth(depthOf(gx, gy, -2))
+            .setTint(tileTint);
           sprites.push(img);
         }
 
@@ -207,8 +262,8 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(0, 1)
-            .setDepth(depthOf(gx, gy, -3));
-          if (dark) img.setTint(DARK_TINT);
+            .setDepth(depthOf(gx, gy, -3))
+            .setTint(this.tintFor(this.brightnessAt(gx + 0.5, gy)));
           sprites.push(img);
           const wk = `h:${gx},${gy}`;
           this.wallIndex.set(wk, [img]);
@@ -220,8 +275,8 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(1, 1)
-            .setDepth(depthOf(gx, gy, -3));
-          if (dark) img.setTint(DARK_TINT);
+            .setDepth(depthOf(gx, gy, -3))
+            .setTint(this.tintFor(this.brightnessAt(gx, gy + 0.5)));
           sprites.push(img);
           const wk = `v:${gx},${gy}`;
           this.wallIndex.set(wk, [img]);
@@ -245,7 +300,6 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     }
-    if (dark) rt.setTint(DARK_TINT);
     this.chunkViews.set(key, { rt, sprites, wallKeys, version: c.version });
   }
 
@@ -267,6 +321,7 @@ export class WorldScene extends Phaser.Scene {
         if (count > 5) {
           timer.destroy();
           this.buildChunkView(c);
+          this.queueNeighborRebuilds(cx, cy); // light gradient bleeds into neighbors
         }
       },
     });
@@ -781,6 +836,15 @@ export class WorldScene extends Phaser.Scene {
         for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(0.45);
       }
       this.fadedWalls = fade;
+    }
+
+    // rebuild chunks whose lighting context changed (neighbor arrived/relit)
+    if (this.rebuildQueue.size > 0) {
+      for (const key of this.rebuildQueue) {
+        const c = this.store.chunks.get(key);
+        if (c && this.chunkViews.has(key)) this.buildChunkView(c);
+      }
+      this.rebuildQueue.clear();
     }
 
     // chunk subscriptions follow the camera
