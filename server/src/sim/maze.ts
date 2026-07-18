@@ -243,17 +243,15 @@ export class Maze {
       const erng = rngFor(this.seed, 'edge', edgeId);
       if (erng() > 0.85) return; // occasional fully open border
       for (let i = 0; i < S; i++) set(i, EDGE.Wall);
+      // every opening in a wall line is a framed doorway (lockable by chaos,
+      // unlockable by viral events); extra doorways are sometimes locked
       const doorways = erng() < 0.5 ? 1 : 2;
+      let firstOff = -1;
       for (let d = 0; d < doorways; d++) {
         const off = randInt(erng, 1, S - 2);
-        let v: number = EDGE.None;
-        if (d > 0) {
-          const roll = erng();
-          if (roll < 0.2) v = EDGE.DoorLocked;
-          else if (roll < 0.45) v = EDGE.DoorOpen;
-        } else if (erng() < 0.2) {
-          v = EDGE.DoorOpen;
-        }
+        if (d === 0) firstOff = off;
+        else if (off === firstOff) continue; // never overwrite the guaranteed open door
+        const v: number = d > 0 && erng() < 0.25 ? EDGE.DoorLocked : EDGE.DoorOpen;
         set(off, v);
       }
     };
@@ -271,7 +269,7 @@ export class Maze {
         const sx = x0 + randInt(rng, 3, w - 3);
         for (let y = y0; y < y0 + h; y++) wallsV[at(sx, y)] = EDGE.Wall;
         const dy = randInt(rng, y0, y0 + h - 1);
-        wallsV[at(sx, dy)] = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
+        wallsV[at(sx, dy)] = EDGE.DoorOpen;
         // rare extra locked door elsewhere on the line
         if (h >= 5 && rng() < 0.15) {
           const ly = randInt(rng, y0, y0 + h - 1);
@@ -283,7 +281,7 @@ export class Maze {
         const sy = y0 + randInt(rng, 3, h - 3);
         for (let x = x0; x < x0 + w; x++) wallsH[at(x, sy)] = EDGE.Wall;
         const dx = randInt(rng, x0, x0 + w - 1);
-        wallsH[at(dx, sy)] = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
+        wallsH[at(dx, sy)] = EDGE.DoorOpen;
         if (w >= 5 && rng() < 0.15) {
           const lx = randInt(rng, x0, x0 + w - 1);
           if (lx !== dx) wallsH[at(lx, sy)] = EDGE.DoorLocked;
