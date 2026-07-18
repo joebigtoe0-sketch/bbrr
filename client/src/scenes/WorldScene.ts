@@ -62,6 +62,9 @@ export class WorldScene extends Phaser.Scene {
   private monsterTrail = { gx: 0, gy: 0, queue: [] as { x: number; y: number }[] };
   /** chunk views needing a rebuild because a neighbor arrived or relit */
   private rebuildQueue = new Set<string>();
+  /** wall keys to keep translucent because evidence sits right behind them */
+  private evidenceFadeKeys = new Set<string>();
+  private evidenceFadeDirty = true;
   private subTimer = 0;
   private sidebarTimer = 0;
   private sidebarDirty = true;
@@ -149,10 +152,14 @@ export class WorldScene extends Phaser.Scene {
     };
     s.onMonster = () => this.updateMonster();
     s.onChaos = () => this.updateChaos();
-    s.onEvidence = (e, isNew) => this.upsertEvidence(e, isNew);
+    s.onEvidence = (e, isNew) => {
+      this.upsertEvidence(e, isNew);
+      this.evidenceFadeDirty = true;
+    };
     s.onEvidenceRemove = (id) => {
       for (const o of this.evidenceViews.get(id) ?? []) o.destroy();
       this.evidenceViews.delete(id);
+      this.evidenceFadeDirty = true;
     };
     s.onLight = (cx, cy, on) => this.flickerChunk(cx, cy, on);
     s.onWorldEvent = (e) => this.handleWorldEvent(e);
@@ -389,8 +396,9 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'printout':
       case 'note': {
+        // nudged up-screen so paper scraps sit clear of the tile's front walls
         const img = this.add
-          .image(p.sx, p.sy, e.kind === 'printout' ? 'paper' : 'note')
+          .image(p.sx, p.sy - 5, e.kind === 'printout' ? 'paper' : 'note')
           .setOrigin(0.5, 0.5)
           .setDepth(depthOf(e.x, e.y, -1));
         interactive(img, () =>
@@ -818,9 +826,21 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // wall planes standing in front of agents go translucent so they stay visible
+    // wall planes standing in front of agents or evidence go translucent
     {
-      const fade = new Set<string>();
+      if (this.evidenceFadeDirty) {
+        this.evidenceFadeDirty = false;
+        this.evidenceFadeKeys.clear();
+        for (const e of this.store.evidence.values()) {
+          const tx = Math.floor(e.x);
+          const ty = Math.floor(e.y);
+          this.evidenceFadeKeys.add(`h:${tx},${ty + 1}`);
+          this.evidenceFadeKeys.add(`v:${tx + 1},${ty}`);
+          this.evidenceFadeKeys.add(`h:${tx + 1},${ty + 1}`);
+          this.evidenceFadeKeys.add(`v:${tx + 1},${ty + 1}`);
+        }
+      }
+      const fade = new Set<string>(this.evidenceFadeKeys);
       for (const v of this.agentViews.values()) {
         const tx = Math.floor(v.gx);
         const ty = Math.floor(v.gy);
