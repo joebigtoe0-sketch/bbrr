@@ -61,7 +61,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
     if (a.state === 'dead') continue;
     const d = Math.hypot(a.x - m.x, a.y - m.y);
     const visible =
-      d <= PERCEIVE_RANGE && hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.isTransparent);
+      d <= PERCEIVE_RANGE && hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.canStep);
     if (visible && !a.monsterVisible) {
       a.stress = Math.min(100, a.stress + 30);
       world.addMemoryNote(a, 'Something enormous moved in the dark. You ran.');
@@ -82,7 +82,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
     for (const a of world.agents.values()) {
       if (a.state === 'dead') continue;
       const d = Math.hypot(a.x - m.x, a.y - m.y);
-      if (d <= sightRange && hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.isTransparent)) {
+      if (d <= sightRange && hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.canStep)) {
         m.mode = 'hunt';
         m.targetAgentId = a.id;
         m.huntLostSightAt = now;
@@ -100,7 +100,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
       m.path = null;
     } else {
       const d = Math.hypot(target.x - m.x, target.y - m.y);
-      const los = hasLineOfSight(m.x, m.y, target.x, target.y, world.maze.isTransparent);
+      const los = hasLineOfSight(m.x, m.y, target.x, target.y, world.maze.canStep);
       if (los) m.huntLostSightAt = now;
       if (now - m.huntLostSightAt > 10000) {
         // lost the trail
@@ -124,7 +124,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
           startY: Math.floor(m.y),
           goalX: Math.floor(target.x),
           goalY: Math.floor(target.y),
-          isWalkable: world.maze.isWalkable,
+          canStep: world.maze.canStep,
         });
         m.pathIdx = 0;
       }
@@ -145,7 +145,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
           startY: Math.floor(m.y),
           goalX: spot.x,
           goalY: spot.y,
-          isWalkable: world.maze.isWalkable,
+          canStep: world.maze.canStep,
         });
         m.pathIdx = 0;
       }

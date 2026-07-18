@@ -279,7 +279,7 @@ export function startPath(world: World, a: AgentRuntime, tx: number, ty: number)
     startY: Math.floor(a.y),
     goalX: tx,
     goalY: ty,
-    isWalkable: world.maze.isWalkable,
+    canStep: world.maze.canStep,
   });
   if (path && path.length > 0) {
     a.path = path;
@@ -292,18 +292,9 @@ export function startPath(world: World, a: AgentRuntime, tx: number, ty: number)
   }
 }
 
-function nearestWallSpot(world: World, a: AgentRuntime): { x: number; y: number } {
-  const ax = Math.floor(a.x);
-  const ay = Math.floor(a.y);
-  for (const [dx, dy] of [
-    [0, -1],
-    [1, 0],
-    [0, 1],
-    [-1, 0],
-  ] as const) {
-    if (!world.maze.isWalkable(ax + dx, ay + dy)) return { x: ax + dx, y: ay + dy };
-  }
-  return { x: ax, y: ay };
+/** Walls are edges now; graffiti is scrawled at the agent's own tile. */
+function nearestWallSpot(_world: World, a: AgentRuntime): { x: number; y: number } {
+  return { x: Math.floor(a.x), y: Math.floor(a.y) };
 }
 
 function doSearch(world: World, a: AgentRuntime) {
@@ -394,7 +385,12 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
       const wp = a.path[a.pathIdx]!;
       const txc = wp.x + 0.5;
       const tyc = wp.y + 0.5;
-      if (!world.maze.isWalkable(wp.x, wp.y)) {
+      const prev =
+        a.pathIdx > 0
+          ? a.path[a.pathIdx - 1]!
+          : { x: Math.floor(a.x), y: Math.floor(a.y) };
+      const already = prev.x === wp.x && prev.y === wp.y;
+      if (!already && !world.maze.canStep(prev.x, prev.y, wp.x, wp.y)) {
         // blocked mid-route (a door locked, a hallway collapsed)
         a.path = null;
         a.state = 'idle';

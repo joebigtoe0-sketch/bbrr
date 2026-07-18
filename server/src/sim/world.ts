@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import {
   CHUNK_SIZE,
+  EDGE,
   SIM_TICK_MS,
   TILE,
   chunkKey,
@@ -334,19 +335,15 @@ export class World {
   }
 
   private unlockDoorNear(x: number, y: number, radius: number) {
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    for (let r = 1; r <= radius; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-          if (this.maze.tileAt(x0 + dx, y0 + dy) === TILE.DoorLocked) {
-            this.maze.setTile(x0 + dx, y0 + dy, TILE.DoorOpen);
-            this.bus.emit('door_unlock', { x: x0 + dx, y: y0 + dy });
-            return;
-          }
-        }
-      }
+    const edge = this.maze.findEdge(
+      Math.floor(x),
+      Math.floor(y),
+      radius,
+      (v) => v === EDGE.DoorLocked,
+    );
+    if (edge) {
+      this.maze.setEdge(edge.gx, edge.gy, edge.dir, EDGE.DoorOpen);
+      this.bus.emit('door_unlock', { x: edge.gx, y: edge.gy });
     }
   }
 
@@ -391,12 +388,21 @@ export class World {
   private canRoam(x: number, y: number, needed: number): boolean {
     const seen = new Set<string>();
     const stack = [[x, y]];
+    seen.add(`${x},${y}`);
     while (stack.length > 0 && seen.size < needed) {
       const [cx, cy] = stack.pop()!;
-      const k = `${cx},${cy}`;
-      if (seen.has(k) || !this.maze.isWalkable(cx, cy)) continue;
-      seen.add(k);
-      stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+      for (const [nx, ny] of [
+        [cx! + 1, cy!],
+        [cx! - 1, cy!],
+        [cx!, cy! + 1],
+        [cx!, cy! - 1],
+      ] as const) {
+        const k = `${nx},${ny}`;
+        if (!seen.has(k) && this.maze.canStep(cx!, cy!, nx, ny)) {
+          seen.add(k);
+          stack.push([nx, ny]);
+        }
+      }
     }
     return seen.size >= needed;
   }
@@ -655,6 +661,7 @@ export class World {
     const evidenceUpdate = this.evidence.pendingUpdate.splice(0);
     const evidenceRemove = this.evidence.pendingRemove.splice(0);
     const tileUpdates = this.maze.pendingTileChanges.splice(0);
+    const edgeUpdates = this.maze.pendingEdgeChanges.splice(0);
     const lightUpdates = this.maze.pendingLightChanges.splice(0);
     const worldEvents = this.bus.pending.splice(0);
     const speech = this.pendingSpeech.splice(0);
@@ -668,6 +675,7 @@ export class World {
       evidenceUpdate.length === 0 &&
       evidenceRemove.length === 0 &&
       tileUpdates.length === 0 &&
+      edgeUpdates.length === 0 &&
       lightUpdates.length === 0 &&
       worldEvents.length === 0 &&
       speech.length === 0
@@ -687,6 +695,7 @@ export class World {
       evidenceUpdate,
       evidenceRemove,
       tileUpdates,
+      edgeUpdates,
       lightUpdates,
       worldEvents,
       speech,

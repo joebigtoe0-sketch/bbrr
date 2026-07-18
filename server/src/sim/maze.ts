@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, TILE, WALKABLE_TILES, chunkKey, tileToChunk } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, WALKABLE_TILES, chunkKey, edgePassable, tileToChunk } from '@backrooms/shared';
 import type { MazeChunk } from '@backrooms/shared';
 import { chunkRepo } from '../db/repo.js';
 import { rngFor, randInt } from './rng.js';
@@ -6,10 +6,11 @@ import { rngFor, randInt } from './rng.js';
 export interface ChunkRuntime {
   cx: number;
   cy: number;
-  tiles: Uint8Array; // CHUNK_SIZE^2 row-major
+  tiles: Uint8Array; // CHUNK_SIZE^2 row-major (Floor/Rubble)
+  wallsH: Uint8Array; // EDGE value on each tile's NORTH edge
+  wallsV: Uint8Array; // EDGE value on each tile's WEST edge
   lightsOn: boolean;
   version: number;
-  /** set true when freshly generated this session (evidence decoration pending) */
   freshlyGenerated: boolean;
 }
 
@@ -20,15 +21,26 @@ export interface TileChange {
   tile: number;
 }
 
+export interface EdgeChange {
+  cx: number;
+  cy: number;
+  i: number;
+  dir: 'h' | 'v';
+  value: number;
+}
+
 /**
- * Infinite chunked maze. Chunks generate lazily and deterministically from the
- * world seed; adjacent chunks agree on edge openings without coordination.
+ * Infinite chunked maze. Walls live on tile EDGES (backrooms-style thin
+ * partitions): each tile owns its north (wallsH) and west (wallsV) edge.
+ * Chunks generate lazily and deterministically; the border wall line between
+ * two chunks is owned by the south/east chunk and both sides agree on its
+ * doorways via hash(seed, edgeId).
  */
 export class Maze {
   private chunks = new Map<string, ChunkRuntime>();
   readonly pendingTileChanges: TileChange[] = [];
+  readonly pendingEdgeChanges: EdgeChange[] = [];
   readonly pendingLightChanges: { cx: number; cy: number; on: boolean }[] = [];
-  /** chunks generated for the very first time this tick (for decoration) */
   readonly newlyGenerated: ChunkRuntime[] = [];
 
   constructor(private seed: string) {}
@@ -45,7 +57,6 @@ export class Maze {
     return [...this.chunks.keys()];
   }
 
-  /** Get a chunk, loading from DB or generating as needed. */
   ensureChunk(cx: number, cy: number): ChunkRuntime {
     const key = chunkKey(cx, cy);
     let c = this.chunks.get(key);
@@ -57,47 +68,109 @@ export class Maze {
         cx,
         cy,
         tiles: new Uint8Array(row.tiles),
+        wallsH: new Uint8Array(row.walls_h),
+        wallsV: new Uint8Array(row.walls_v),
         lightsOn: row.lights_on === 1,
         version: row.version,
         freshlyGenerated: false,
       };
     } else {
       c = this.generateChunk(cx, cy);
-      chunkRepo.upsert(key, cx, cy, c.tiles, c.lightsOn, c.version);
+      this.persist(c);
       this.newlyGenerated.push(c);
     }
     this.chunks.set(key, c);
     return c;
   }
 
-  /** Tile at global coords; Void if the chunk isn't loaded (never generates). */
+  private persist(c: ChunkRuntime) {
+    chunkRepo.upsert(chunkKey(c.cx, c.cy), c.cx, c.cy, c.tiles, c.wallsH, c.wallsV, c.lightsOn, c.version);
+  }
+
+  private local(g: number): number {
+    return ((g % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+  }
+
   tileAt(gx: number, gy: number): number {
     const c = this.chunks.get(chunkKey(tileToChunk(gx), tileToChunk(gy)));
     if (!c) return TILE.Void;
-    const lx = ((gx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const ly = ((gy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    return c.tiles[ly * CHUNK_SIZE + lx]!;
+    return c.tiles[this.local(gy) * CHUNK_SIZE + this.local(gx)]!;
+  }
+
+  /** EDGE value on the north edge of tile (gx,gy). Void chunks read as Wall. */
+  edgeH(gx: number, gy: number): number {
+    const c = this.chunks.get(chunkKey(tileToChunk(gx), tileToChunk(gy)));
+    if (!c) return EDGE.Wall;
+    return c.wallsH[this.local(gy) * CHUNK_SIZE + this.local(gx)]!;
+  }
+
+  /** EDGE value on the west edge of tile (gx,gy). */
+  edgeV(gx: number, gy: number): number {
+    const c = this.chunks.get(chunkKey(tileToChunk(gx), tileToChunk(gy)));
+    if (!c) return EDGE.Wall;
+    return c.wallsV[this.local(gy) * CHUNK_SIZE + this.local(gx)]!;
   }
 
   isWalkable = (gx: number, gy: number): boolean => WALKABLE_TILES.includes(this.tileAt(gx, gy));
 
-  isTransparent = (gx: number, gy: number): boolean => {
-    const t = this.tileAt(gx, gy);
-    return t !== TILE.Wall && t !== TILE.Void;
+  /** Can you move (or see) between two ORTHOGONALLY adjacent tiles? */
+  canStep = (fx: number, fy: number, tx: number, ty: number): boolean => {
+    if (!this.isWalkable(tx, ty)) return false;
+    const dx = tx - fx;
+    const dy = ty - fy;
+    if (dx === 1) return edgePassable(this.edgeV(tx, ty));
+    if (dx === -1) return edgePassable(this.edgeV(fx, fy));
+    if (dy === 1) return edgePassable(this.edgeH(tx, ty));
+    if (dy === -1) return edgePassable(this.edgeH(fx, fy));
+    return false;
   };
 
   setTile(gx: number, gy: number, tile: number) {
     const cx = tileToChunk(gx);
     const cy = tileToChunk(gy);
     const c = this.ensureChunk(cx, cy);
-    const lx = ((gx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const ly = ((gy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const i = ly * CHUNK_SIZE + lx;
+    const i = this.local(gy) * CHUNK_SIZE + this.local(gx);
     if (c.tiles[i] === tile) return;
     c.tiles[i] = tile;
     c.version++;
-    chunkRepo.upsert(chunkKey(cx, cy), cx, cy, c.tiles, c.lightsOn, c.version);
+    this.persist(c);
     this.pendingTileChanges.push({ cx, cy, i, tile });
+  }
+
+  setEdge(gx: number, gy: number, dir: 'h' | 'v', value: number) {
+    const cx = tileToChunk(gx);
+    const cy = tileToChunk(gy);
+    const c = this.ensureChunk(cx, cy);
+    const i = this.local(gy) * CHUNK_SIZE + this.local(gx);
+    const arr = dir === 'h' ? c.wallsH : c.wallsV;
+    if (arr[i] === value) return;
+    arr[i] = value;
+    c.version++;
+    this.persist(c);
+    this.pendingEdgeChanges.push({ cx, cy, i, dir, value });
+  }
+
+  /** Find a nearby edge matching a predicate; returns its tile+direction. */
+  findEdge(
+    gx: number,
+    gy: number,
+    radius: number,
+    pred: (value: number) => boolean,
+  ): { gx: number; gy: number; dir: 'h' | 'v'; value: number } | null {
+    for (let r = 0; r <= radius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = gx + dx;
+          const y = gy + dy;
+          const h = this.edgeH(x, y);
+          if (pred(h)) return { gx: x, gy: y, dir: 'h', value: h };
+          const v = this.edgeV(x, y);
+          if (pred(v)) return { gx: x, gy: y, dir: 'v', value: v };
+        }
+      }
+    }
+    return null;
   }
 
   setLights(cx: number, cy: number, on: boolean) {
@@ -105,11 +178,10 @@ export class Maze {
     if (c.lightsOn === on) return;
     c.lightsOn = on;
     c.version++;
-    chunkRepo.upsert(chunkKey(cx, cy), cx, cy, c.tiles, c.lightsOn, c.version);
+    this.persist(c);
     this.pendingLightChanges.push({ cx, cy, on });
   }
 
-  /** Ensure all chunks within `radius` chunks of a tile position exist. */
   growAround(gx: number, gy: number, radius = 1) {
     const ccx = tileToChunk(gx);
     const ccy = tileToChunk(gy);
@@ -120,7 +192,6 @@ export class Maze {
     }
   }
 
-  /** Unload chunks with no anchor (agent/monster/subscription) within `keepRadius` chunks. */
   evict(anchors: { cx: number; cy: number }[], keepRadius = 4): string[] {
     const evicted: string[] = [];
     for (const [key, c] of this.chunks) {
@@ -140,139 +211,101 @@ export class Maze {
   }
 
   toWire(c: ChunkRuntime): MazeChunk {
-    return { cx: c.cx, cy: c.cy, tiles: [...c.tiles], lightsOn: c.lightsOn, version: c.version };
+    return {
+      cx: c.cx,
+      cy: c.cy,
+      tiles: [...c.tiles],
+      wallsH: [...c.wallsH],
+      wallsV: [...c.wallsV],
+      lightsOn: c.lightsOn,
+      version: c.version,
+    };
   }
 
   /**
-   * Deterministic chunk generation — backrooms style: open damp floor
-   * partitioned by THIN (1-tile) wall lines with doorways, plus pillars.
-   *
-   * Border walls live on each chunk's TOP row and LEFT column only, so
-   * neighbors never double them. Whether a border wall exists and where its
-   * openings are comes from hash(seed, edgeId), which both neighbors compute
-   * identically.
+   * Deterministic generation — Found-Footage backrooms:
+   * every tile is floor; walls are edge lines. Chunk borders get partial
+   * wall lines with doorways (owned by this chunk's row 0 / col 0, agreed
+   * via hash(seed, edgeId)); the interior is BSP-subdivided into small
+   * rooms (3–7 tiles) with a doorway per split. Connectivity is guaranteed
+   * by construction: every split and every border line carves an opening.
    */
   private generateChunk(cx: number, cy: number): ChunkRuntime {
     const S = CHUNK_SIZE;
     const rng = rngFor(this.seed, 'chunk', cx, cy);
     const tiles = new Uint8Array(S * S).fill(TILE.Floor);
+    const wallsH = new Uint8Array(S * S).fill(EDGE.None);
+    const wallsV = new Uint8Array(S * S).fill(EDGE.None);
     const at = (x: number, y: number) => y * S + x;
 
-    // border walls (top edge H:cx:cy owned by this chunk; left edge V:cx:cy)
-    const applyEdge = (edgeId: string, place: (offset: number, tile: number) => void) => {
+    // ---- border wall lines (deterministic per shared edge id) ----
+    const border = (edgeId: string, set: (i: number, v: number) => void) => {
       const erng = rngFor(this.seed, 'edge', edgeId);
-      if (erng() > 0.8) return; // some borders are fully open expanses
-      for (let i = 0; i < S; i++) place(i, TILE.Wall);
-      const count = erng() < 0.4 ? 1 : 2;
-      for (let i = 0; i < count; i++) {
-        const offset = randInt(erng, 2, S - 3);
-        let tile: number = TILE.Floor;
-        if (i > 0) {
+      if (erng() > 0.85) return; // occasional fully open border
+      for (let i = 0; i < S; i++) set(i, EDGE.Wall);
+      const doorways = erng() < 0.5 ? 1 : 2;
+      for (let d = 0; d < doorways; d++) {
+        const off = randInt(erng, 1, S - 3);
+        let v: number = EDGE.None;
+        if (d > 0) {
           const roll = erng();
-          if (roll < 0.15) tile = TILE.DoorLocked;
-          else if (roll < 0.35) tile = TILE.DoorOpen;
+          if (roll < 0.2) v = EDGE.DoorLocked;
+          else if (roll < 0.45) v = EDGE.DoorOpen;
+        } else if (erng() < 0.2) {
+          v = EDGE.DoorOpen;
         }
-        // doorways are two tiles wide so they read clearly
-        place(offset, tile);
-        place(Math.min(S - 1, offset + 1), tile === TILE.DoorLocked ? TILE.DoorLocked : TILE.Floor);
+        set(off, v);
+        if (v !== EDGE.DoorLocked) set(off + 1, v === EDGE.DoorOpen ? EDGE.None : EDGE.None);
       }
     };
-    applyEdge(`H:${cx}:${cy}`, (o, t) => (tiles[at(o, 0)] = t));
-    applyEdge(`V:${cx}:${cy}`, (o, t) => (tiles[at(0, o)] = t));
+    border(`H:${cx}:${cy}`, (i, v) => (wallsH[at(i, 0)] = v));
+    border(`V:${cx}:${cy}`, (i, v) => (wallsV[at(0, i)] = v));
 
-    // interior partitions: straight thin wall segments with a gap or doorway
-    const partitions = randInt(rng, 2, 4);
-    for (let s = 0; s < partitions; s++) {
-      const horizontal = rng() < 0.5;
-      const len = randInt(rng, 5, 12);
-      const x0 = randInt(rng, 2, S - 3);
-      const y0 = randInt(rng, 2, S - 3);
-      const gapAt = randInt(rng, 1, len - 2);
-      const gapTile = rng() < 0.25 ? TILE.DoorOpen : TILE.Floor;
-      for (let i = 0; i < len; i++) {
-        const x = horizontal ? x0 + i : x0;
-        const y = horizontal ? y0 : y0 + i;
-        if (x < 1 || y < 1 || x >= S || y >= S) break;
-        const isGap = i === gapAt || i === gapAt + 1;
-        tiles[at(x, y)] = isGap ? gapTile : TILE.Wall;
+    // ---- BSP subdivision into small rooms ----
+    const subdivide = (x0: number, y0: number, w: number, h: number, depth: number) => {
+      const canV = w >= 6;
+      const canH = h >= 6;
+      if ((!canV && !canH) || depth > 6) return;
+      if (depth > 0 && rng() < 0.12) return; // occasional larger hall
+      const vertical = canV && (!canH || w >= h ? true : rng() < 0.5);
+      if (vertical) {
+        const sx = x0 + randInt(rng, 3, w - 3);
+        for (let y = y0; y < y0 + h; y++) wallsV[at(sx, y)] = EDGE.Wall;
+        const dy = randInt(rng, y0, y0 + h - 2);
+        const door = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
+        wallsV[at(sx, dy)] = door;
+        wallsV[at(sx, dy + 1)] = door === EDGE.DoorOpen ? EDGE.None : EDGE.None;
+        // rare extra locked door elsewhere on the line
+        if (h >= 5 && rng() < 0.15) {
+          const ly = randInt(rng, y0, y0 + h - 1);
+          if (ly !== dy && ly !== dy + 1) wallsV[at(sx, ly)] = EDGE.DoorLocked;
+        }
+        subdivide(x0, y0, sx - x0, h, depth + 1);
+        subdivide(sx, y0, w - (sx - x0), h, depth + 1);
+      } else {
+        const sy = y0 + randInt(rng, 3, h - 3);
+        for (let x = x0; x < x0 + w; x++) wallsH[at(x, sy)] = EDGE.Wall;
+        const dx = randInt(rng, x0, x0 + w - 2);
+        const door = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
+        wallsH[at(dx, sy)] = door;
+        wallsH[at(dx + 1, sy)] = door === EDGE.DoorOpen ? EDGE.None : EDGE.None;
+        if (w >= 5 && rng() < 0.15) {
+          const lx = randInt(rng, x0, x0 + w - 1);
+          if (lx !== dx && lx !== dx + 1) wallsH[at(lx, sy)] = EDGE.DoorLocked;
+        }
+        subdivide(x0, y0, w, sy - y0, depth + 1);
+        subdivide(x0, sy, w, h - (sy - y0), depth + 1);
       }
-    }
-
-    // pillars: lone supports scattered through the open floor
-    for (let y = 2; y < S - 2; y++) {
-      for (let x = 2; x < S - 2; x++) {
-        if (tiles[at(x, y)] === TILE.Floor && rng() < 0.02) tiles[at(x, y)] = TILE.Wall;
-      }
-    }
-
-    // connectivity: every walkable cell reachable (carves through partitions)
-    this.connect(tiles, rng);
+    };
+    subdivide(0, 0, S, S, 0);
 
     const distFromOrigin = Math.max(Math.abs(cx), Math.abs(cy));
     const lightsOn = distFromOrigin < 2 ? true : rng() < 0.7;
 
-    return { cx, cy, tiles, lightsOn, version: 0, freshlyGenerated: true };
+    return { cx, cy, tiles, wallsH, wallsV, lightsOn, version: 0, freshlyGenerated: true };
   }
 
-  private connect(tiles: Uint8Array, rng: () => number) {
-    const S = CHUNK_SIZE;
-    const at = (x: number, y: number) => y * S + x;
-    const walkable = (i: number) => WALKABLE_TILES.includes(tiles[i]!);
-
-    for (let guard = 0; guard < 20; guard++) {
-      // label components via flood fill
-      const label = new Int16Array(S * S).fill(-1);
-      let nLabels = 0;
-      for (let i = 0; i < S * S; i++) {
-        if (!walkable(i) || label[i] !== -1) continue;
-        const stack = [i];
-        label[i] = nLabels;
-        while (stack.length) {
-          const cur = stack.pop()!;
-          const x = cur % S;
-          const y = Math.floor(cur / S);
-          for (const [nx, ny] of [
-            [x + 1, y],
-            [x - 1, y],
-            [x, y + 1],
-            [x, y - 1],
-          ] as const) {
-            if (nx < 0 || ny < 0 || nx >= S || ny >= S) continue;
-            const ni = at(nx, ny);
-            if (walkable(ni) && label[ni] === -1) {
-              label[ni] = nLabels;
-              stack.push(ni);
-            }
-          }
-        }
-        nLabels++;
-      }
-      if (nLabels <= 1) return;
-
-      // carve an L corridor between a cell of component 0 and a cell of component 1
-      const cellOf = (l: number): { x: number; y: number } => {
-        const candidates: number[] = [];
-        for (let i = 0; i < S * S; i++) if (label[i] === l) candidates.push(i);
-        const i = candidates[Math.floor(rng() * candidates.length)]!;
-        return { x: i % S, y: Math.floor(i / S) };
-      };
-      const a = cellOf(0);
-      const b = cellOf(1);
-      const carve = (x: number, y: number) => {
-        const i = at(x, y);
-        if (tiles[i] === TILE.Wall) tiles[i] = TILE.Floor;
-      };
-      if (rng() < 0.5) {
-        for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) carve(x, a.y);
-        for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) carve(b.x, y);
-      } else {
-        for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) carve(a.x, y);
-        for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) carve(x, b.y);
-      }
-    }
-  }
-
-  /** Find nearest walkable tile to a point, spiraling outward (loaded chunks only). */
+  /** Nearest walkable tile (spiral, loaded chunks only). */
   nearestWalkable(gx: number, gy: number, maxR = 12): { x: number; y: number } | null {
     if (this.isWalkable(gx, gy)) return { x: gx, y: gy };
     for (let r = 1; r <= maxR; r++) {

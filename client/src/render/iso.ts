@@ -2,11 +2,11 @@ export const TILE_W = 64;
 export const TILE_H = 32;
 export const HALF_W = TILE_W / 2;
 export const HALF_H = TILE_H / 2;
-export const WALL_H = 24;
-
-/** thin wall slab: footprint diamond is 75% of a tile, standing on carpet */
-export const WALL_DIA_W = 48;
-export const WALL_DIA_H = 24;
+/** wall plane height (walls live on tile edges, like room partitions) */
+export const WALL_H = 34;
+/** edge-wall texture canvas: 32 wide, 16 (edge drop) + WALL_H + 2 (top lip) */
+export const WALL_TEX_W = 32;
+export const WALL_TEX_H = 16 + WALL_H + 2;
 
 /** Screen position of a tile's diamond center (grid coords may be floats). */
 export function gridToScreen(x: number, y: number): { sx: number; sy: number } {

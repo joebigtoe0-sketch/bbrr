@@ -1,16 +1,19 @@
 /**
- * Bounded 4-directional A* over the maze grid.
- * The search window is WINDOW x WINDOW tiles centered on the start,
- * capping worst-case cost regardless of world size.
+ * Bounded 4-directional A* over the maze grid with EDGE-aware movement:
+ * a step between adjacent tiles is legal iff `canStep(fx,fy,tx,ty)` — which
+ * checks both the destination tile and the wall/door edge between them.
+ * The search window is WINDOW x WINDOW tiles centered on the start.
  */
 export const PATH_WINDOW = 48;
+
+export type CanStep = (fx: number, fy: number, tx: number, ty: number) => boolean;
 
 export interface PathQuery {
   startX: number;
   startY: number;
   goalX: number;
   goalY: number;
-  isWalkable: (x: number, y: number) => boolean;
+  canStep: CanStep;
 }
 
 /** Returns a list of tile coords (excluding start), or null if unreachable in-window. */
@@ -20,7 +23,6 @@ export function findPath(q: PathQuery): { x: number; y: number }[] | null {
   const minY = q.startY - half;
   const w = PATH_WINDOW;
 
-  // Clamp goal into the window; caller re-plans when the edge is reached.
   const gx = Math.max(minX, Math.min(minX + w - 1, q.goalX));
   const gy = Math.max(minY, Math.min(minY + w - 1, q.goalY));
 
@@ -36,7 +38,6 @@ export function findPath(q: PathQuery): { x: number; y: number }[] | null {
   const startI = idx(q.startX, q.startY);
   gScore[startI] = 0;
 
-  // Simple binary heap keyed by f-score.
   const heap: number[] = [startI];
   const fScore = new Float64Array(size).fill(Infinity);
   fScore[startI] = Math.abs(gx - q.startX) + Math.abs(gy - q.startY);
@@ -98,7 +99,7 @@ export function findPath(q: PathQuery): { x: number; y: number }[] | null {
       [cx, cy - 1],
     ] as const;
     for (const [nx, ny] of neighbors) {
-      if (!inWindow(nx, ny) || !q.isWalkable(nx, ny)) continue;
+      if (!inWindow(nx, ny) || !q.canStep(cx, cy, nx, ny)) continue;
       const ni = idx(nx, ny);
       if (closed[ni]) continue;
       const tentative = gScore[cur]! + 1;
@@ -111,7 +112,6 @@ export function findPath(q: PathQuery): { x: number; y: number }[] | null {
     }
   }
 
-  // Reconstruct to the goal if reached, else to the closest-approach cell.
   const endI = closed[goalI === -1 ? bestI : goalI] ? (goalI === -1 ? bestI : goalI) : bestI;
   if (endI === startI) return null;
   const path: { x: number; y: number }[] = [];
@@ -124,13 +124,17 @@ export function findPath(q: PathQuery): { x: number; y: number }[] | null {
   return path.length > 0 ? path : null;
 }
 
-/** Bresenham line-of-sight between tile centers. */
+/**
+ * Edge-aware line of sight: walk the Bresenham line; every cell-to-cell
+ * transition must pass `canStep` (walls and closed doors block sight).
+ * Diagonal transitions accept either of the two orthogonal L-paths.
+ */
 export function hasLineOfSight(
   x0: number,
   y0: number,
   x1: number,
   y1: number,
-  isTransparent: (x: number, y: number) => boolean,
+  canStep: CanStep,
 ): boolean {
   let ax = Math.floor(x0);
   let ay = Math.floor(y0);
@@ -141,17 +145,31 @@ export function hasLineOfSight(
   const sx = ax < bx ? 1 : -1;
   const sy = ay < by ? 1 : -1;
   let err = dx - dy;
-  for (;;) {
+  let guard = dx + dy + 4;
+  while (guard-- > 0) {
     if (ax === bx && ay === by) return true;
-    if (!(ax === Math.floor(x0) && ay === Math.floor(y0)) && !isTransparent(ax, ay)) return false;
     const e2 = 2 * err;
-    if (e2 > -dy) {
+    const stepX = e2 > -dy && ax !== bx;
+    const stepY = e2 < dx && ay !== by;
+    if (stepX && stepY) {
+      const viaX = canStep(ax, ay, ax + sx, ay) && canStep(ax + sx, ay, ax + sx, ay + sy);
+      const viaY = canStep(ax, ay, ax, ay + sy) && canStep(ax, ay + sy, ax + sx, ay + sy);
+      if (!viaX && !viaY) return false;
+      err -= dy;
+      err += dx;
+      ax += sx;
+      ay += sy;
+    } else if (stepX) {
+      if (!canStep(ax, ay, ax + sx, ay)) return false;
       err -= dy;
       ax += sx;
-    }
-    if (e2 < dx) {
+    } else if (stepY) {
+      if (!canStep(ax, ay, ax, ay + sy)) return false;
       err += dx;
       ay += sy;
+    } else {
+      return true;
     }
   }
+  return true;
 }

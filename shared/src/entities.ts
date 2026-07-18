@@ -93,7 +93,9 @@ export type WorldEvent = z.infer<typeof WorldEventSchema>;
 export const MazeChunkSchema = z.object({
   cx: z.number(),
   cy: z.number(),
-  tiles: z.array(z.number()), // CHUNK_SIZE^2, row-major
+  tiles: z.array(z.number()), // CHUNK_SIZE^2, row-major (floor/rubble)
+  wallsH: z.array(z.number()), // north edge of each tile (EDGE values)
+  wallsV: z.array(z.number()), // west edge of each tile (EDGE values)
   lightsOn: z.boolean(),
   version: z.number(),
 });

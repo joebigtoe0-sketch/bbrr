@@ -39,6 +39,14 @@ export const TileUpdateSchema = z.object({
   tile: z.number(),
 });
 
+export const EdgeUpdateSchema = z.object({
+  cx: z.number(),
+  cy: z.number(),
+  i: z.number(), // index into wallsH/wallsV
+  dir: z.enum(['h', 'v']),
+  value: z.number(), // EDGE value
+});
+
 export const DeltaMsg = z.object({
   t: z.literal('delta'),
   tick: z.number(),
@@ -50,6 +58,7 @@ export const DeltaMsg = z.object({
   evidenceUpdate: z.array(EvidenceArtifactSchema),
   evidenceRemove: z.array(z.string()),
   tileUpdates: z.array(TileUpdateSchema),
+  edgeUpdates: z.array(EdgeUpdateSchema),
   lightUpdates: z.array(z.object({ cx: z.number(), cy: z.number(), on: z.boolean() })),
   worldEvents: z.array(WorldEventSchema),
   speech: z.array(z.object({ agentId: z.string(), text: z.string() })),

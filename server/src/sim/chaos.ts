@@ -1,4 +1,4 @@
-import { TILE } from '@backrooms/shared';
+import { EDGE } from '@backrooms/shared';
 import type { World } from './world.js';
 import { randInt } from './rng.js';
 
@@ -87,19 +87,13 @@ export function tickChaos(world: World, now: number) {
     }
     case 'lock_door': {
       // lock an open door near the victim
-      const vx = Math.floor(victim.x);
-      const vy = Math.floor(victim.y);
-      outer: for (let r = 1; r <= 12; r++) {
-        for (let dy = -r; dy <= r; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-            if (world.maze.tileAt(vx + dx, vy + dy) === TILE.DoorOpen) {
-              world.maze.setTile(vx + dx, vy + dy, TILE.DoorLocked);
-              break outer;
-            }
-          }
-        }
-      }
+      const edge = world.maze.findEdge(
+        Math.floor(victim.x),
+        Math.floor(victim.y),
+        12,
+        (v) => v === EDGE.DoorOpen,
+      );
+      if (edge) world.maze.setEdge(edge.gx, edge.gy, edge.dir, EDGE.DoorLocked);
       break;
     }
     case 'fake_terminal_log': {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHUNK_SIZE, TILE, chunkKey, tileToChunk } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@backrooms/shared';
 import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
@@ -54,8 +54,6 @@ export class WorldScene extends Phaser.Scene {
   private wallIndex = new Map<string, Phaser.GameObjects.Image[]>();
   private fadedWalls = new Set<string>();
   private floaters: Floater[] = [];
-  /** chunks whose views need a rebuild because a neighbor arrived/changed */
-  private rebuildQueue = new Set<string>();
   private subTimer = 0;
   private sidebarTimer = 0;
   private sidebarDirty = true;
@@ -69,7 +67,7 @@ export class WorldScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#0a0a08');
-    this.cameras.main.setZoom(1);
+    this.cameras.main.setZoom(1.3);
 
     this.monsterView = this.add
       .image(0, 0, 'monster')
@@ -115,16 +113,10 @@ export class WorldScene extends Phaser.Scene {
         this.cameras.main.centerOn(p.sx, p.sy);
       }
     };
-    s.onChunk = (c) => {
-      this.buildChunkView(c);
-      this.queueNeighborRebuilds(c.cx, c.cy);
-    };
+    s.onChunk = (c) => this.buildChunkView(c);
     s.onChunkChanged = (key) => {
       const c = s.chunks.get(key);
-      if (c) {
-        this.buildChunkView(c);
-        this.queueNeighborRebuilds(c.cx, c.cy);
-      }
+      if (c) this.buildChunkView(c);
     };
     s.onAgent = (a) => {
       this.upsertAgent(a);
@@ -156,31 +148,6 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- chunk rendering ----------------
 
-  private tileAtGlobal(gx: number, gy: number): number {
-    const c = this.store.chunks.get(chunkKey(tileToChunk(gx), tileToChunk(gy)));
-    if (!c) return TILE.Void;
-    const lx = ((gx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const ly = ((gy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    return c.tiles[ly * CHUNK_SIZE + lx]!;
-  }
-
-  private isWallish(gx: number, gy: number): boolean {
-    const t = this.tileAtGlobal(gx, gy);
-    return t === TILE.Wall || t === TILE.DoorOpen || t === TILE.DoorLocked;
-  }
-
-  private queueNeighborRebuilds(cx: number, cy: number) {
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const key = chunkKey(cx + dx, cy + dy);
-      if (this.chunkViews.has(key)) this.rebuildQueue.add(key);
-    }
-  }
-
   private buildChunkView(c: MazeChunk) {
     const key = chunkKey(c.cx, c.cy);
     const old = this.chunkViews.get(key);
@@ -208,53 +175,17 @@ export class WorldScene extends Phaser.Scene {
 
     for (let ly = 0; ly < S; ly++) {
       for (let lx = 0; lx < S; lx++) {
-        const t = c.tiles[ly * S + lx]!;
+        const i = ly * S + lx;
+        const t = c.tiles[i]!;
         if (t === TILE.Void) continue;
         const gx = origin.gx + lx;
         const gy = origin.gy + ly;
         const p = gridToScreen(gx, gy);
 
-        // carpet everywhere — thin walls stand on it
+        // carpet everywhere — walls are planes on the edges between tiles
         const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
         rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16);
-
-        if (t === TILE.Wall) {
-          const nE = this.isWallish(gx + 1, gy);
-          const nW = this.isWallish(gx - 1, gy);
-          const nN = this.isWallish(gx, gy - 1);
-          const nS = this.isWallish(gx, gy + 1);
-          if (nE && nW && nN && nS) {
-            // sealed interior of a solid region: dark carpet, no wall geometry
-            rt.draw('voidFloor', p.sx - rtX - 32, p.sy - rtY - 16);
-            continue;
-          }
-          const imgs: Phaser.GameObjects.Image[] = [];
-          // bars span center-to-center so runs join seamlessly (canvas center y = 64 of 92)
-          if (nE || nW)
-            imgs.push(this.add.image(p.sx, p.sy + 28, 'wallEW').setOrigin(0.5, 1));
-          if (nN || nS)
-            imgs.push(this.add.image(p.sx, p.sy + 28, 'wallNS').setOrigin(0.5, 1));
-          if (imgs.length === 0)
-            imgs.push(this.add.image(p.sx, p.sy + 12, 'wall').setOrigin(0.5, 1));
-          const wk = `${gx},${gy}`;
-          for (const img of imgs) {
-            img.setDepth(depthOf(gx, gy));
-            if (dark) img.setTint(DARK_TINT);
-            sprites.push(img);
-          }
-          this.wallIndex.set(wk, imgs);
-          wallKeys.push(wk);
-        } else if (t === TILE.DoorOpen || t === TILE.DoorLocked) {
-          const img = this.add
-            .image(p.sx, p.sy + 12, t === TILE.DoorOpen ? 'doorOpen' : 'doorLocked')
-            .setOrigin(0.5, 1)
-            .setDepth(depthOf(gx, gy));
-          if (dark) img.setTint(DARK_TINT);
-          sprites.push(img);
-          const wk = `${gx},${gy}`;
-          this.wallIndex.set(wk, [img]);
-          wallKeys.push(wk);
-        } else if (t === TILE.Rubble) {
+        if (t === TILE.Rubble) {
           const img = this.add
             .image(p.sx, p.sy, 'rubble')
             .setOrigin(0.5, 0.5)
@@ -263,17 +194,45 @@ export class WorldScene extends Phaser.Scene {
           sprites.push(img);
         }
 
-        // fluorescent fixtures on a sparse deterministic grid
-        if (t === TILE.Floor && gx % 4 === 1 && gy % 4 === 2) {
+        // edge walls: H = north border (N->E corner), V = west border (W->N)
+        const eh = c.wallsH[i]!;
+        if (eh !== EDGE.None) {
+          const tex = eh === EDGE.Wall ? 'wallH' : eh === EDGE.DoorOpen ? 'doorH' : 'doorLockedH';
+          const img = this.add
+            .image(p.sx, p.sy, tex)
+            .setOrigin(0, 1)
+            .setDepth(depthOf(gx, gy, -3));
+          if (dark) img.setTint(DARK_TINT);
+          sprites.push(img);
+          const wk = `h:${gx},${gy}`;
+          this.wallIndex.set(wk, [img]);
+          wallKeys.push(wk);
+        }
+        const ev = c.wallsV[i]!;
+        if (ev !== EDGE.None) {
+          const tex = ev === EDGE.Wall ? 'wallV' : ev === EDGE.DoorOpen ? 'doorV' : 'doorLockedV';
+          const img = this.add
+            .image(p.sx, p.sy, tex)
+            .setOrigin(1, 1)
+            .setDepth(depthOf(gx, gy, -3));
+          if (dark) img.setTint(DARK_TINT);
+          sprites.push(img);
+          const wk = `v:${gx},${gy}`;
+          this.wallIndex.set(wk, [img]);
+          wallKeys.push(wk);
+        }
+
+        // fluorescent fixtures, sparser for a moodier found-footage look
+        if (t === TILE.Floor && gx % 6 === 2 && gy % 6 === 3) {
           const bar = this.add
-            .image(p.sx, p.sy - WALL_H - 6, c.lightsOn ? 'lightOn' : 'lightOff')
+            .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
             .setDepth(depthOf(gx, gy, 7));
           sprites.push(bar);
           if (c.lightsOn) {
             const glow = this.add
               .image(p.sx, p.sy, 'glow')
               .setBlendMode(Phaser.BlendModes.ADD)
-              .setScale(1.6, 1.0)
+              .setScale(2.2, 1.4)
               .setDepth(depthOf(gx, gy, -1));
             sprites.push(glow);
           }
@@ -761,15 +720,16 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // walls standing in front of agents go translucent so they stay visible
+    // wall planes standing in front of agents go translucent so they stay visible
     {
       const fade = new Set<string>();
       for (const v of this.agentViews.values()) {
         const tx = Math.floor(v.gx);
         const ty = Math.floor(v.gy);
-        fade.add(`${tx + 1},${ty}`);
-        fade.add(`${tx},${ty + 1}`);
-        fade.add(`${tx + 1},${ty + 1}`);
+        fade.add(`h:${tx},${ty + 1}`); // south wall of the agent's tile
+        fade.add(`v:${tx + 1},${ty}`); // east wall
+        fade.add(`h:${tx + 1},${ty + 1}`);
+        fade.add(`v:${tx + 1},${ty + 1}`);
       }
       for (const wk of this.fadedWalls) {
         if (!fade.has(wk)) for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(1);
@@ -778,15 +738,6 @@ export class WorldScene extends Phaser.Scene {
         for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(0.45);
       }
       this.fadedWalls = fade;
-    }
-
-    // chunks whose neighbors arrived/changed need their wall connections rebuilt
-    if (this.rebuildQueue.size > 0) {
-      for (const key of this.rebuildQueue) {
-        const c = this.store.chunks.get(key);
-        if (c && this.chunkViews.has(key)) this.buildChunkView(c);
-      }
-      this.rebuildQueue.clear();
     }
 
     // chunk subscriptions follow the camera

@@ -29,12 +29,14 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
   const ax = Math.floor(a.x);
   const ay = Math.floor(a.y);
 
-  // exits: probe a few tiles out in each cardinal direction
+  // exits: probe a few tiles out in each cardinal direction (edge-aware)
   const ways: string[] = [];
   for (const d of DIRS) {
     let open = 0;
     for (let i = 1; i <= 4; i++) {
-      if (world.maze.isWalkable(ax + d.dx * i, ay + d.dy * i)) open++;
+      const px = ax + d.dx * (i - 1);
+      const py = ay + d.dy * (i - 1);
+      if (world.maze.canStep(px, py, px + d.dx, py + d.dy)) open++;
       else break;
     }
     if (open >= 2) {

@@ -10,14 +10,29 @@ export const MONSTER_HUNT_SPEED = 2.3;
 export const TILE = {
   Void: 0,
   Floor: 1,
-  Wall: 2,
-  DoorOpen: 3,
-  DoorLocked: 4,
   Rubble: 5,
 } as const;
 export type TileId = (typeof TILE)[keyof typeof TILE];
 
-export const WALKABLE_TILES: readonly number[] = [TILE.Floor, TILE.DoorOpen];
+export const WALKABLE_TILES: readonly number[] = [TILE.Floor];
+
+/**
+ * Walls live on tile EDGES, not tiles. Each tile owns its NORTH edge
+ * (between it and the tile above, stored in wallsH) and its WEST edge
+ * (between it and the tile left, stored in wallsV).
+ */
+export const EDGE = {
+  None: 0,
+  Wall: 1,
+  DoorOpen: 2,
+  DoorLocked: 3,
+} as const;
+export type EdgeId = (typeof EDGE)[keyof typeof EDGE];
+
+/** an edge you can walk and see through */
+export function edgePassable(e: number): boolean {
+  return e === EDGE.None || e === EDGE.DoorOpen;
+}
 
 export const OBJECTIVES = [
   'escape',

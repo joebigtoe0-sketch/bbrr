@@ -19,9 +19,10 @@ export const kv = {
 // ---------- chunks ----------
 const chunkGetStmt = db.prepare('SELECT * FROM chunks WHERE key = ?');
 const chunkUpsertStmt = db.prepare(`
-  INSERT INTO chunks (key, cx, cy, tiles, lights_on, version, updated_at)
-  VALUES (@key, @cx, @cy, @tiles, @lights_on, @version, @updated_at)
-  ON CONFLICT(key) DO UPDATE SET tiles=excluded.tiles, lights_on=excluded.lights_on,
+  INSERT INTO chunks (key, cx, cy, tiles, walls_h, walls_v, lights_on, version, updated_at)
+  VALUES (@key, @cx, @cy, @tiles, @walls_h, @walls_v, @lights_on, @version, @updated_at)
+  ON CONFLICT(key) DO UPDATE SET tiles=excluded.tiles, walls_h=excluded.walls_h,
+    walls_v=excluded.walls_v, lights_on=excluded.lights_on,
     version=excluded.version, updated_at=excluded.updated_at
 `);
 export interface ChunkRow {
@@ -29,6 +30,8 @@ export interface ChunkRow {
   cx: number;
   cy: number;
   tiles: Buffer;
+  walls_h: Buffer;
+  walls_v: Buffer;
   lights_on: number;
   version: number;
 }
@@ -36,12 +39,23 @@ export const chunkRepo = {
   get(key: string): ChunkRow | undefined {
     return chunkGetStmt.get(key) as ChunkRow | undefined;
   },
-  upsert(key: string, cx: number, cy: number, tiles: Uint8Array, lightsOn: boolean, version: number) {
+  upsert(
+    key: string,
+    cx: number,
+    cy: number,
+    tiles: Uint8Array,
+    wallsH: Uint8Array,
+    wallsV: Uint8Array,
+    lightsOn: boolean,
+    version: number,
+  ) {
     chunkUpsertStmt.run({
       key,
       cx,
       cy,
       tiles: Buffer.from(tiles),
+      walls_h: Buffer.from(wallsH),
+      walls_v: Buffer.from(wallsV),
       lights_on: lightsOn ? 1 : 0,
       version,
       updated_at: Date.now(),

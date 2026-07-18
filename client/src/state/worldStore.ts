@@ -109,6 +109,13 @@ export class WorldStore {
             this.onChunkChanged(chunkKey(tu.cx, tu.cy));
           }
         }
+        for (const eu of msg.edgeUpdates) {
+          const c = this.chunks.get(chunkKey(eu.cx, eu.cy));
+          if (c) {
+            (eu.dir === 'h' ? c.wallsH : c.wallsV)[eu.i] = eu.value;
+            this.onChunkChanged(chunkKey(eu.cx, eu.cy));
+          }
+        }
         for (const lu of msg.lightUpdates) {
           const c = this.chunks.get(chunkKey(lu.cx, lu.cy));
           if (c) c.lightsOn = lu.on;
