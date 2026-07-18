@@ -245,10 +245,11 @@ export class Maze {
       for (let i = 0; i < S; i++) set(i, EDGE.Wall);
       // every opening in a wall line is a framed doorway (lockable by chaos,
       // unlockable by viral events); extra doorways are sometimes locked
+      // doorways stay away from the line ends so they never hug a junction
       const doorways = erng() < 0.5 ? 1 : 2;
       let firstOff = -1;
       for (let d = 0; d < doorways; d++) {
-        const off = randInt(erng, 1, S - 2);
+        const off = randInt(erng, 2, S - 3);
         if (d === 0) firstOff = off;
         else if (off === firstOff) continue; // never overwrite the guaranteed open door
         const v: number = d > 0 && erng() < 0.25 ? EDGE.DoorLocked : EDGE.DoorOpen;
@@ -259,6 +260,11 @@ export class Maze {
     border(`V:${cx}:${cy}`, (i, v) => (wallsV[at(0, i)] = v));
 
     // ---- BSP subdivision into small rooms ----
+    const isDoor = (arr: Uint8Array, x: number, y: number) => {
+      if (x < 0 || y < 0 || x >= S || y >= S) return false;
+      const v = arr[at(x, y)]!;
+      return v === EDGE.DoorOpen || v === EDGE.DoorLocked;
+    };
     const subdivide = (x0: number, y0: number, w: number, h: number, depth: number) => {
       const canV = w >= 6;
       const canH = h >= 6;
@@ -266,24 +272,39 @@ export class Maze {
       if (depth > 0 && rng() < 0.12) return; // occasional larger hall
       const vertical = canV && (!canH || w >= h ? true : rng() < 0.5);
       if (vertical) {
-        const sx = x0 + randInt(rng, 3, w - 3);
+        // pick a split whose endpoints don't run into an existing doorway
+        let sx = x0 + randInt(rng, 3, w - 3);
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const clashTop = isDoor(wallsH, sx - 1, y0) || isDoor(wallsH, sx, y0);
+          const clashBot =
+            y0 + h < S && (isDoor(wallsH, sx - 1, y0 + h) || isDoor(wallsH, sx, y0 + h));
+          if (!clashTop && !clashBot) break;
+          sx = x0 + randInt(rng, 3, w - 3);
+        }
         for (let y = y0; y < y0 + h; y++) wallsV[at(sx, y)] = EDGE.Wall;
-        const dy = randInt(rng, y0, y0 + h - 1);
+        const dy = randInt(rng, y0 + 1, y0 + h - 2);
         wallsV[at(sx, dy)] = EDGE.DoorOpen;
-        // rare extra locked door elsewhere on the line
+        // rare extra locked door elsewhere on the line (also off the ends)
         if (h >= 5 && rng() < 0.15) {
-          const ly = randInt(rng, y0, y0 + h - 1);
+          const ly = randInt(rng, y0 + 1, y0 + h - 2);
           if (ly !== dy) wallsV[at(sx, ly)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, sx - x0, h, depth + 1);
         subdivide(sx, y0, w - (sx - x0), h, depth + 1);
       } else {
-        const sy = y0 + randInt(rng, 3, h - 3);
+        let sy = y0 + randInt(rng, 3, h - 3);
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const clashLeft = isDoor(wallsV, x0, sy - 1) || isDoor(wallsV, x0, sy);
+          const clashRight =
+            x0 + w < S && (isDoor(wallsV, x0 + w, sy - 1) || isDoor(wallsV, x0 + w, sy));
+          if (!clashLeft && !clashRight) break;
+          sy = y0 + randInt(rng, 3, h - 3);
+        }
         for (let x = x0; x < x0 + w; x++) wallsH[at(x, sy)] = EDGE.Wall;
-        const dx = randInt(rng, x0, x0 + w - 1);
+        const dx = randInt(rng, x0 + 1, x0 + w - 2);
         wallsH[at(dx, sy)] = EDGE.DoorOpen;
         if (w >= 5 && rng() < 0.15) {
-          const lx = randInt(rng, x0, x0 + w - 1);
+          const lx = randInt(rng, x0 + 1, x0 + w - 2);
           if (lx !== dx) wallsH[at(lx, sy)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, w, sy - y0, depth + 1);
