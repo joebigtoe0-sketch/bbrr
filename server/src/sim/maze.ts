@@ -245,7 +245,7 @@ export class Maze {
       for (let i = 0; i < S; i++) set(i, EDGE.Wall);
       const doorways = erng() < 0.5 ? 1 : 2;
       for (let d = 0; d < doorways; d++) {
-        const off = randInt(erng, 1, S - 3);
+        const off = randInt(erng, 1, S - 2);
         let v: number = EDGE.None;
         if (d > 0) {
           const roll = erng();
@@ -255,7 +255,6 @@ export class Maze {
           v = EDGE.DoorOpen;
         }
         set(off, v);
-        if (v !== EDGE.DoorLocked) set(off + 1, v === EDGE.DoorOpen ? EDGE.None : EDGE.None);
       }
     };
     border(`H:${cx}:${cy}`, (i, v) => (wallsH[at(i, 0)] = v));
@@ -271,27 +270,23 @@ export class Maze {
       if (vertical) {
         const sx = x0 + randInt(rng, 3, w - 3);
         for (let y = y0; y < y0 + h; y++) wallsV[at(sx, y)] = EDGE.Wall;
-        const dy = randInt(rng, y0, y0 + h - 2);
-        const door = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
-        wallsV[at(sx, dy)] = door;
-        wallsV[at(sx, dy + 1)] = door === EDGE.DoorOpen ? EDGE.None : EDGE.None;
+        const dy = randInt(rng, y0, y0 + h - 1);
+        wallsV[at(sx, dy)] = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
         // rare extra locked door elsewhere on the line
         if (h >= 5 && rng() < 0.15) {
           const ly = randInt(rng, y0, y0 + h - 1);
-          if (ly !== dy && ly !== dy + 1) wallsV[at(sx, ly)] = EDGE.DoorLocked;
+          if (ly !== dy) wallsV[at(sx, ly)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, sx - x0, h, depth + 1);
         subdivide(sx, y0, w - (sx - x0), h, depth + 1);
       } else {
         const sy = y0 + randInt(rng, 3, h - 3);
         for (let x = x0; x < x0 + w; x++) wallsH[at(x, sy)] = EDGE.Wall;
-        const dx = randInt(rng, x0, x0 + w - 2);
-        const door = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
-        wallsH[at(dx, sy)] = door;
-        wallsH[at(dx + 1, sy)] = door === EDGE.DoorOpen ? EDGE.None : EDGE.None;
+        const dx = randInt(rng, x0, x0 + w - 1);
+        wallsH[at(dx, sy)] = rng() < 0.22 ? EDGE.DoorOpen : EDGE.None;
         if (w >= 5 && rng() < 0.15) {
           const lx = randInt(rng, x0, x0 + w - 1);
-          if (lx !== dx && lx !== dx + 1) wallsH[at(lx, sy)] = EDGE.DoorLocked;
+          if (lx !== dx) wallsH[at(lx, sy)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, w, sy - y0, depth + 1);
         subdivide(x0, sy, w, h - (sy - y0), depth + 1);
