@@ -27,8 +27,13 @@ interface AgentView {
   label: Phaser.GameObjects.Text;
   gx: number;
   gy: number;
-  tx: number;
-  ty: number;
+  /**
+   * Queue of server positions still to be walked through. Following the
+   * actual 10 Hz sample trail (instead of easing straight toward the latest
+   * position) keeps sprites inside corridors — no cutting corners through
+   * wall planes.
+   */
+  queue: { x: number; y: number }[];
 }
 
 /** a text drifting upward until it leaves the top of the screen */
@@ -54,6 +59,7 @@ export class WorldScene extends Phaser.Scene {
   private wallIndex = new Map<string, Phaser.GameObjects.Image[]>();
   private fadedWalls = new Set<string>();
   private floaters: Floater[] = [];
+  private monsterTrail = { gx: 0, gy: 0, queue: [] as { x: number; y: number }[] };
   private subTimer = 0;
   private sidebarTimer = 0;
   private sidebarDirty = true;
@@ -427,11 +433,13 @@ export class WorldScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5);
-      v = { sprite, label, gx: a.x, gy: a.y, tx: a.x, ty: a.y };
+      v = { sprite, label, gx: a.x, gy: a.y, queue: [] };
       this.agentViews.set(a.id, v);
     }
-    v.tx = a.x;
-    v.ty = a.y;
+    const last = v.queue[v.queue.length - 1];
+    if (!last || Math.abs(last.x - a.x) > 0.001 || Math.abs(last.y - a.y) > 0.001) {
+      v.queue.push({ x: a.x, y: a.y });
+    }
     if (a.state === 'dead') {
       v.sprite.setTint(0x333333);
       v.sprite.setAlpha(0.6);
@@ -441,8 +449,11 @@ export class WorldScene extends Phaser.Scene {
   private updateMonster() {
     const m = this.store.monster;
     this.monsterView.setVisible(true);
-    const p = gridToScreen(m.x, m.y);
-    this.monsterView.setPosition(p.sx, p.sy + 12).setDepth(depthOf(m.x, m.y, 2));
+    const t = this.monsterTrail;
+    const last = t.queue[t.queue.length - 1];
+    if (!last || Math.abs(last.x - m.x) > 0.001 || Math.abs(last.y - m.y) > 0.001) {
+      t.queue.push({ x: m.x, y: m.y });
+    }
   }
 
   private updateChaos() {
@@ -666,11 +677,42 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- per-frame ----------------
 
+  /** Advance a view position along its queued server-position trail. */
+  private advanceAlongQueue(
+    v: { gx: number; gy: number; queue: { x: number; y: number }[] },
+    dt: number,
+    baseSpeed: number,
+  ) {
+    // slight overspeed drains the queue; big backlogs (tab was hidden) drain faster
+    let budget = (baseSpeed * dt) / 1000;
+    if (v.queue.length > 4) budget *= 1 + (v.queue.length - 4) * 0.5;
+    while (budget > 0 && v.queue.length > 0) {
+      const t = v.queue[0]!;
+      const d = Math.hypot(t.x - v.gx, t.y - v.gy);
+      if (d > 4) {
+        // teleport-scale jump: snap, do not glide through the world
+        v.gx = t.x;
+        v.gy = t.y;
+        v.queue.shift();
+        continue;
+      }
+      if (d <= budget) {
+        v.gx = t.x;
+        v.gy = t.y;
+        budget -= d;
+        v.queue.shift();
+      } else {
+        v.gx += ((t.x - v.gx) / d) * budget;
+        v.gy += ((t.y - v.gy) / d) * budget;
+        budget = 0;
+      }
+    }
+  }
+
   update(_time: number, dt: number) {
-    // agent motion interpolation
+    // agent motion: retrace the server's path samples (no corner cutting)
     for (const [id, v] of this.agentViews) {
-      v.gx += (v.tx - v.gx) * Math.min(1, dt * 0.012);
-      v.gy += (v.ty - v.gy) * Math.min(1, dt * 0.012);
+      this.advanceAlongQueue(v, dt, 2.4);
       const p = gridToScreen(v.gx, v.gy);
       v.sprite.setPosition(p.sx, p.sy + 10).setDepth(depthOf(v.gx, v.gy, 2));
       v.label.setPosition(p.sx, p.sy - 32).setDepth(depthOf(v.gx, v.gy, 4));
@@ -680,13 +722,14 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // monster drift + jitter
+    // monster: same trail-following, plus its unsettling jitter
     {
-      const m = this.store.monster;
-      const p = gridToScreen(m.x, m.y);
+      const t = this.monsterTrail;
+      this.advanceAlongQueue(t, dt, 2.8);
+      const p = gridToScreen(t.gx, t.gy);
       this.monsterView
         .setPosition(p.sx + (Math.random() - 0.5) * 2, p.sy + 12 + (Math.random() - 0.5) * 1.5)
-        .setDepth(depthOf(m.x, m.y, 2));
+        .setDepth(depthOf(t.gx, t.gy, 2));
       this.monsterView.setVisible(true);
     }
     // chaos flicker

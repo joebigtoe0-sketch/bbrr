@@ -56,68 +56,60 @@ export function generateTextures(scene: Phaser.Scene) {
   // H edge (a tile's north border) spans from its N corner to its E corner;
   // V edge (west border) spans from its W corner to its N corner.
   // Canvas: 32 wide, 16px of edge drop + WALL_H of face + 2px top lip.
-  const edgeTex = (
-    key: string,
-    dir: 'h' | 'v',
-    face: number,
-    opts: { door?: boolean; locked?: boolean } = {},
-  ) => {
+  const edgeTex = (key: string, dir: 'h' | 'v', face: number, style: 'wall' | 'doorway' | 'locked') => {
     g.clear();
     const H = WALL_TEX_H;
-    // ground line and top line of the wall plane
     const gl = dir === 'h' ? { x0: 0, y0: H - 16, x1: 32, y1: H } : { x0: 0, y0: H, x1: 32, y1: H - 16 };
-    const tl = { x0: gl.x0, y0: gl.y0 - WALL_H, x1: gl.x1, y1: gl.y1 - WALL_H };
-    const quad = (
-      a: [number, number], b: [number, number], c2: [number, number], d: [number, number], color: number, alpha = 1,
-    ) => {
+    // fill a sub-quad of the wall plane: f = fraction along the edge, h = px above ground
+    const sub = (f0: number, f1: number, h0: number, h1: number, color: number, alpha = 1) => {
+      const ax = gl.x0 + (gl.x1 - gl.x0) * f0;
+      const ay = gl.y0 + (gl.y1 - gl.y0) * f0;
+      const bx = gl.x0 + (gl.x1 - gl.x0) * f1;
+      const by = gl.y0 + (gl.y1 - gl.y0) * f1;
       g.fillStyle(color, alpha);
       g.beginPath();
-      g.moveTo(a[0], a[1]);
-      g.lineTo(b[0], b[1]);
-      g.lineTo(c2[0], c2[1]);
-      g.lineTo(d[0], d[1]);
+      g.moveTo(ax, ay - h0);
+      g.lineTo(bx, by - h0);
+      g.lineTo(bx, by - h1);
+      g.lineTo(ax, ay - h1);
       g.closePath();
       g.fillPath();
     };
-    // face (wallpaper)
-    quad([gl.x0, gl.y0], [gl.x1, gl.y1], [tl.x1, tl.y1], [tl.x0, tl.y0], face);
-    // faint wallpaper stripes
-    for (let s = 1; s <= 2; s++) {
-      const off = (WALL_H * s) / 3;
-      quad(
-        [gl.x0, gl.y0 - off], [gl.x1, gl.y1 - off],
-        [gl.x1, gl.y1 - off - 1.5], [gl.x0, gl.y0 - off - 1.5],
-        0x000000, 0.07,
-      );
-    }
-    // baseboard
-    quad([gl.x0, gl.y0], [gl.x1, gl.y1], [gl.x1, gl.y1 - 5], [gl.x0, gl.y0 - 5], 0x574d26);
-    // top lip (thin lighter strip suggesting wall thickness)
-    quad([tl.x0, tl.y0], [tl.x1, tl.y1], [tl.x1, tl.y1 - 2], [tl.x0, tl.y0 - 2], 0xd8cb74);
-    if (opts.door) {
-      // dark doorway opening with a frame
-      const inset = 5;
-      const t = (x: number) => gl.y0 + ((gl.y1 - gl.y0) * x) / 32; // ground y at x
-      const doorTop = 8;
-      quad(
-        [gl.x0 + inset, t(inset)], [gl.x1 - inset, t(32 - inset)],
-        [gl.x1 - inset, t(32 - inset) - WALL_H + doorTop], [gl.x0 + inset, t(inset) - WALL_H + doorTop],
-        0x17120a,
-      );
-      if (opts.locked) {
-        const midY = (a: number) => t(a) - WALL_H / 2;
-        quad([gl.x0 + 4, midY(4)], [gl.x1 - 4, midY(28)], [gl.x1 - 4, midY(28) - 4], [gl.x0 + 4, midY(4) - 4], 0xb3312e);
-      }
+    const lip = 0xd8cb74;
+    if (style === 'wall') {
+      sub(0, 1, 0, WALL_H, face);
+      sub(0, 1, WALL_H / 3, WALL_H / 3 + 1.5, 0x000000, 0.07);
+      sub(0, 1, (2 * WALL_H) / 3, (2 * WALL_H) / 3 + 1.5, 0x000000, 0.07);
+      sub(0, 1, 0, 5, 0x574d26); // baseboard
+      sub(0, 1, WALL_H, WALL_H + 2, lip);
+    } else if (style === 'doorway') {
+      // open doorway: two jambs + a lintel, see-through in the middle
+      sub(0, 0.2, 0, WALL_H, face);
+      sub(0.8, 1, 0, WALL_H, face);
+      sub(0, 0.2, 0, 5, 0x574d26);
+      sub(0.8, 1, 0, 5, 0x574d26);
+      sub(0.2, 0.8, WALL_H - 8, WALL_H, face); // lintel
+      sub(0.18, 0.22, 0, WALL_H - 8, 0x3a3216); // frame shadow
+      sub(0.78, 0.82, 0, WALL_H - 8, 0x3a3216);
+      sub(0.2, 0.8, WALL_H - 9, WALL_H - 8, 0x3a3216);
+      sub(0, 1, WALL_H, WALL_H + 2, lip);
+    } else {
+      // locked: a closed dark door leaf filling the frame, red seal
+      sub(0, 1, 0, WALL_H, face);
+      sub(0.14, 0.86, 0, WALL_H - 6, 0x241a0e);
+      sub(0.2, 0.8, WALL_H / 2 - 2, WALL_H / 2 + 2, 0xb3312e);
+      sub(0, 1, 0, 4, 0x574d26);
+      sub(0, 1, WALL_H, WALL_H + 2, lip);
     }
     g.generateTexture(key, WALL_TEX_W, WALL_TEX_H);
   };
   // V edges run up-left (darker shade), H edges up-right (lighter shade)
-  edgeTex('wallH', 'h', 0x9c8f45);
-  edgeTex('wallV', 'v', 0x877b39);
-  edgeTex('doorH', 'h', 0x9c8f45, { door: true });
-  edgeTex('doorV', 'v', 0x877b39, { door: true });
-  edgeTex('doorLockedH', 'h', 0x8a7d3e, { door: true, locked: true });
-  edgeTex('doorLockedV', 'v', 0x776b34, { door: true, locked: true });
+  edgeTex('wallH', 'h', 0x9c8f45, 'wall');
+  edgeTex('wallV', 'v', 0x877b39, 'wall');
+  edgeTex('doorH', 'h', 0x9c8f45, 'doorway');
+  edgeTex('doorV', 'v', 0x877b39, 'doorway');
+  edgeTex('doorLockedH', 'h', 0x8a7d3e, 'locked');
+  edgeTex('doorLockedV', 'v', 0x776b34, 'locked');
 
   // ---- rubble (flat) ----
   g.clear();
