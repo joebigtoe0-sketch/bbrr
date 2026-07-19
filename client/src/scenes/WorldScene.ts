@@ -291,16 +291,21 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // fluorescent fixtures, sparser for a moodier found-footage look
-        if (t === TILE.Floor && gx % 6 === 2 && gy % 6 === 3) {
+        // (proper modulo: JS % is negative for negative coords, which used to
+        // erase every fixture west/north of the origin)
+        if (t === TILE.Floor && (((gx % 6) + 6) % 6) === 2 && (((gy % 6) + 6) % 6) === 3) {
+          const b = this.brightnessAt(gx + 0.5, gy + 0.5);
           const bar = this.add
             .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
-            .setDepth(depthOf(gx, gy, 7));
+            .setDepth(depthOf(gx, gy, 7))
+            .setTint(this.tintFor(Math.max(0.35, b)));
           sprites.push(bar);
           if (c.lightsOn) {
             const glow = this.add
               .image(p.sx, p.sy, 'glow')
               .setBlendMode(Phaser.BlendModes.ADD)
               .setScale(2.2, 1.4)
+              .setAlpha(Math.max(0.2, b))
               .setDepth(depthOf(gx, gy, -1));
             sprites.push(glow);
           }
