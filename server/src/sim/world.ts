@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import {
   CHUNK_SIZE,
   EDGE,
+  OBJECTIVES,
   SIM_TICK_MS,
   TILE,
   chunkKey,
@@ -74,6 +75,7 @@ export class World {
   private lastEvictAt = 0;
   private lastFlushAt = 0;
   private lastViralRollAt = 0;
+  private lastRespawnAt = 0;
   private lastTickAt = Date.now();
   private timer: NodeJS.Timeout | null = null;
 
@@ -142,6 +144,16 @@ export class World {
     if (now - this.lastViralRollAt > 120000) {
       this.lastViralRollAt = now;
       rollViral(this);
+    }
+    // the maze always finds new people: refill toward MIN_POPULATION, one at a time
+    if (now - this.lastRespawnAt > 45000) {
+      this.lastRespawnAt = now;
+      const living = [...this.agents.values()].filter((a) => a.state !== 'dead').length;
+      if (living < config.MIN_POPULATION) {
+        const objective = OBJECTIVES[Math.floor(Math.random() * OBJECTIVES.length)]!;
+        const r = this.spawnAgent(objective);
+        if (!('error' in r)) console.log(`[world] the maze found someone new: ${r.name} (${objective})`);
+      }
     }
     if (now - this.lastEvictAt > 30000) {
       this.lastEvictAt = now;

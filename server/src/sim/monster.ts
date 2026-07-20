@@ -56,9 +56,11 @@ export function tickMonster(world: World, dtMs: number, now: number) {
   const dt = dtMs / 1000;
   world.maze.growAround(Math.floor(m.x), Math.floor(m.y), 1);
 
+  const livingAgents = [...world.agents.values()].filter((a) => a.state !== 'dead');
+  const living = livingAgents.length;
+
   // agents perceive the monster (stress spikes on first sight)
-  for (const a of world.agents.values()) {
-    if (a.state === 'dead') continue;
+  for (const a of livingAgents) {
     const d = Math.hypot(a.x - m.x, a.y - m.y);
     const visible =
       d <= PERCEIVE_RANGE && hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.canStep);
@@ -67,6 +69,17 @@ export function tickMonster(world: World, dtMs: number, now: number) {
       world.addMemoryNote(a, 'Something enormous moved in the dark. You ran.');
     }
     a.monsterVisible = visible;
+
+    // even a sated monster is not something you can stand inside
+    if (m.mode !== 'dormant' && d < 1.2 && a.state !== 'dead') {
+      world.killAgent(a, 'stood too close to the thing in the halls');
+      m.mode = 'dormant';
+      m.dormantUntil = now + 60000;
+      m.satedUntil = now + (living <= 3 ? 480000 : 240000);
+      m.targetAgentId = null;
+      m.path = null;
+      return;
+    }
   }
 
   if (m.mode === 'dormant') {
@@ -76,7 +89,6 @@ export function tickMonster(world: World, dtMs: number, now: number) {
 
   // acquire / keep a hunt target (not while sated after a recent kill).
   // With few residents it hunts lazily — the world should never empty in minutes.
-  const living = [...world.agents.values()].filter((a) => a.state !== 'dead').length;
   const sightRange = living <= 2 ? SIGHT_RANGE / 2 : SIGHT_RANGE;
   if (m.mode === 'roam' && now >= m.satedUntil) {
     for (const a of world.agents.values()) {
@@ -132,23 +144,37 @@ export function tickMonster(world: World, dtMs: number, now: number) {
   }
 
   if (m.mode === 'roam' && (!m.path || m.pathIdx >= (m.path?.length ?? 0))) {
-    // wander toward the neighborhood of the nearest agent cluster
-    const agents = [...world.agents.values()].filter((a) => a.state !== 'dead');
-    if (agents.length > 0) {
-      const anchor = agents[Math.floor(Math.random() * agents.length)]!;
-      const tx = Math.floor(anchor.x + (Math.random() - 0.5) * 40);
-      const ty = Math.floor(anchor.y + (Math.random() - 0.5) * 40);
-      const spot = world.maze.nearestWalkable(tx, ty);
-      if (spot) {
-        m.path = findPath({
-          startX: Math.floor(m.x),
-          startY: Math.floor(m.y),
-          goalX: spot.x,
-          goalY: spot.y,
-          canStep: world.maze.canStep,
-        });
-        m.pathIdx = 0;
-      }
+    let tx: number;
+    let ty: number;
+    if (now < m.satedUntil && living > 0) {
+      // sated: wander AWAY from the survivors, visibly uninterested
+      const cx = livingAgents.reduce((s, a) => s + a.x, 0) / living;
+      const cy = livingAgents.reduce((s, a) => s + a.y, 0) / living;
+      const dx = m.x - cx;
+      const dy = m.y - cy;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      tx = Math.floor(m.x + (dx / len) * 25 + (Math.random() - 0.5) * 16);
+      ty = Math.floor(m.y + (dy / len) * 25 + (Math.random() - 0.5) * 16);
+    } else if (living > 0) {
+      // hungry: prowl the neighborhood of a random survivor
+      const anchor = livingAgents[Math.floor(Math.random() * living)]!;
+      tx = Math.floor(anchor.x + (Math.random() - 0.5) * 40);
+      ty = Math.floor(anchor.y + (Math.random() - 0.5) * 40);
+    } else {
+      tx = Math.floor(m.x + (Math.random() - 0.5) * 30);
+      ty = Math.floor(m.y + (Math.random() - 0.5) * 30);
+    }
+    world.maze.growAround(tx, ty, 1);
+    const spot = world.maze.nearestWalkable(tx, ty);
+    if (spot) {
+      m.path = findPath({
+        startX: Math.floor(m.x),
+        startY: Math.floor(m.y),
+        goalX: spot.x,
+        goalY: spot.y,
+        canStep: world.maze.canStep,
+      });
+      m.pathIdx = 0;
     }
   }
 

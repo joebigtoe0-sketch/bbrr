@@ -1,5 +1,10 @@
 import http from 'node:http';
+import { setDefaultAutoSelectFamily } from 'node:net';
 import { config } from './config.js';
+
+// Happy Eyeballs: without this, Windows boxes with broken IPv6 routes stall
+// 20-30s on the first connection to api.openai.com (seen as brain timeouts)
+setDefaultAutoSelectFamily(true);
 import { World } from './sim/world.js';
 import { BrainScheduler } from './brain/scheduler.js';
 import { WsHub } from './net/wsHub.js';

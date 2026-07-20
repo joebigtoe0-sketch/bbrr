@@ -16,6 +16,8 @@ const EnvSchema = z.object({
   BRAIN_MODE: z.enum(['mock', 'openai', 'hybrid']).default('mock'),
   REAL_BRAIN_COUNT: z.coerce.number().default(3),
   MAX_AGENTS: z.coerce.number().default(20),
+  /** the maze refills itself to this many living agents */
+  MIN_POPULATION: z.coerce.number().default(3),
   DECISION_INTERVAL_MS: z.coerce.number().default(15000),
   MAX_CONCURRENT_LLM: z.coerce.number().default(4),
   LLM_RPM_CAP: z.coerce.number().default(60),
