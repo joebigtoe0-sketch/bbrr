@@ -46,6 +46,28 @@ interface Floater {
 const DARK_TINT = 0x55566a;
 const FLOATER_DEPTH = 5_000_000;
 
+/**
+ * On-screen height (world px, pre-zoom) for real loaded art. The generated PNGs
+ * are large, so we scale each to sprite size preserving aspect. Keys not listed
+ * are procedural placeholders already at native size.
+ */
+const ART_HEIGHT: Record<string, number> = {
+  crt: 34,
+  printer: 28,
+  crate: 32,
+  sign: 40,
+  corpse: 26,
+  rubble: 30,
+  lightOn: 16,
+  lightOff: 16,
+};
+
+function scaleArt(img: Phaser.GameObjects.Image): Phaser.GameObjects.Image {
+  const h = ART_HEIGHT[img.texture.key];
+  if (h && img.height > 0) img.setScale(h / img.height);
+  return img;
+}
+
 export class WorldScene extends Phaser.Scene {
   private store = new WorldStore();
   private conn = new Connection(this.store);
@@ -254,11 +276,13 @@ export class WorldScene extends Phaser.Scene {
         const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
         rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16, 1, tileTint);
         if (t === TILE.Rubble) {
-          const img = this.add
-            .image(p.sx, p.sy, 'rubble')
-            .setOrigin(0.5, 0.5)
-            .setDepth(depthOf(gx, gy, -2))
-            .setTint(tileTint);
+          const img = scaleArt(
+            this.add
+              .image(p.sx, p.sy, 'rubble')
+              .setOrigin(0.5, 0.6)
+              .setDepth(depthOf(gx, gy, -2))
+              .setTint(tileTint),
+          );
           sprites.push(img);
         }
 
@@ -295,10 +319,12 @@ export class WorldScene extends Phaser.Scene {
         // erase every fixture west/north of the origin)
         if (t === TILE.Floor && (((gx % 6) + 6) % 6) === 2 && (((gy % 6) + 6) % 6) === 3) {
           const b = this.brightnessAt(gx + 0.5, gy + 0.5);
-          const bar = this.add
-            .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
-            .setDepth(depthOf(gx, gy, 7))
-            .setTint(this.tintFor(Math.max(0.35, b)));
+          const bar = scaleArt(
+            this.add
+              .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
+              .setDepth(depthOf(gx, gy, 7))
+              .setTint(this.tintFor(Math.max(0.35, b))),
+          );
           sprites.push(bar);
           if (c.lightsOn) {
             const glow = this.add
@@ -376,10 +402,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'crt': {
-        const img = this.add
-          .image(p.sx, p.sy + 6, 'crt')
-          .setOrigin(0.5, 1)
-          .setDepth(depthOf(e.x, e.y));
+        const img = scaleArt(
+          this.add.image(p.sx, p.sy + 6, 'crt').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+        );
         interactive(img, () => {
           const lines = (e.meta?.lines as string[] | undefined) ?? [];
           openReader(
@@ -391,10 +416,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'printer': {
-        const img = this.add
-          .image(p.sx, p.sy + 4, 'printer')
-          .setOrigin(0.5, 1)
-          .setDepth(depthOf(e.x, e.y));
+        const img = scaleArt(
+          this.add.image(p.sx, p.sy + 4, 'printer').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+        );
         interactive(img, () => openReader('PRINTER', ['An old printer. It hums, waiting.']));
         objs.push(img);
         break;
@@ -416,10 +440,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'sign': {
-        const img = this.add
-          .image(p.sx, p.sy + 6, 'sign')
-          .setOrigin(0.5, 1)
-          .setDepth(depthOf(e.x, e.y));
+        const img = scaleArt(
+          this.add.image(p.sx, p.sy + 6, 'sign').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+        );
         const arrow = this.add
           .text(p.sx, p.sy - 14, e.text?.replace('EXIT ', '') ?? '?', {
             fontFamily: 'Consolas, monospace',
@@ -433,10 +456,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'crate': {
-        const img = this.add
-          .image(p.sx, p.sy + 6, 'crate')
-          .setOrigin(0.5, 1)
-          .setDepth(depthOf(e.x, e.y));
+        const img = scaleArt(
+          this.add.image(p.sx, p.sy + 6, 'crate').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+        );
         if (isNew) {
           img.setY(p.sy - 220);
           this.tweens.add({
@@ -451,10 +473,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'corpse': {
-        const img = this.add
-          .image(p.sx, p.sy, 'corpse')
-          .setOrigin(0.5, 0.5)
-          .setDepth(depthOf(e.x, e.y, -1));
+        const img = scaleArt(
+          this.add.image(p.sx, p.sy, 'corpse').setOrigin(0.5, 0.85).setDepth(depthOf(e.x, e.y, -1)),
+        );
         interactive(img, () => openReader('REMAINS', [e.text ?? 'Somebody. Once.']));
         if (isNew) {
           img.setAlpha(0);

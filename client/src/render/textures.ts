@@ -8,6 +8,11 @@ import { TILE_W, TILE_H, WALL_H, WALL_TEX_W, WALL_TEX_H } from './iso.js';
 export function generateTextures(scene: Phaser.Scene) {
   const g = scene.add.graphics();
 
+  // only generate a placeholder if a real asset wasn't already loaded for this key
+  const gen = (key: string, w: number, h: number) => {
+    if (!scene.textures.exists(key)) g.generateTexture(key, w, h);
+  };
+
   const diamond = (
     gg: Phaser.GameObjects.Graphics,
     cx: number,
@@ -49,7 +54,7 @@ export function generateTextures(scene: Phaser.Scene) {
       const py = TILE_H / 2 + (t + u - 1) * (TILE_H / 2 - 3);
       g.fillRect(px, py, 2, 1);
     }
-    g.generateTexture(key, TILE_W, TILE_H);
+    gen(key, TILE_W, TILE_H);
   }
 
   // ---- edge walls: thin planes standing ON the border between two tiles ----
@@ -101,7 +106,7 @@ export function generateTextures(scene: Phaser.Scene) {
       sub(0, 1, 0, 4, 0x574d26);
       sub(0, 1, WALL_H, WALL_H + 2, lip);
     }
-    g.generateTexture(key, WALL_TEX_W, WALL_TEX_H);
+    gen(key, WALL_TEX_W, WALL_TEX_H);
   };
   // V edges run up-left (darker shade), H edges up-right (lighter shade)
   edgeTex('wallH', 'h', 0x9c8f45, 'wall');
@@ -120,7 +125,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillCircle(30, 22, 4);
   g.fillStyle(0x7d7560, 1);
   g.fillCircle(33, 13, 3);
-  g.generateTexture('rubble', TILE_W, TILE_H);
+  gen('rubble', TILE_W, TILE_H);
 
   // ---- fluorescent light bar (drawn hanging; anchored center) ----
   g.clear();
@@ -128,13 +133,13 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillRect(2, 0, 28, 4);
   g.fillStyle(0xf5ffe8, 1);
   g.fillRect(0, 4, 32, 6);
-  g.generateTexture('lightOn', 32, 10);
+  gen('lightOn', 32, 10);
   g.clear();
   g.fillStyle(0x2a2a2a, 1);
   g.fillRect(2, 0, 28, 4);
   g.fillStyle(0x3a3f38, 1);
   g.fillRect(0, 4, 32, 6);
-  g.generateTexture('lightOff', 32, 10);
+  gen('lightOff', 32, 10);
 
   // glow (concentric circles fake a radial gradient)
   g.clear();
@@ -142,7 +147,7 @@ export function generateTextures(scene: Phaser.Scene) {
     g.fillStyle(0xfff8d0, 0.028);
     g.fillCircle(40, 40, r);
   }
-  g.generateTexture('glow', 80, 80);
+  gen('glow', 80, 80);
 
   // ---- CRT terminal ----
   g.clear();
@@ -155,7 +160,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillStyle(0x35e06a, 0.9);
   g.fillRect(5, 11, 12, 2);
   g.fillRect(5, 15, 8, 2);
-  g.generateTexture('crt', 26, 28);
+  gen('crt', 26, 28);
 
   // ---- printer ----
   g.clear();
@@ -165,7 +170,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillRect(2, 2, 22, 6);
   g.fillStyle(0xf2f2e6, 1);
   g.fillRect(6, 0, 14, 4);
-  g.generateTexture('printer', 26, 20);
+  gen('printer', 26, 20);
 
   // ---- paper / printout ----
   g.clear();
@@ -175,7 +180,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.strokeRect(1, 0, 12, 14);
   g.lineStyle(1, 0x777768, 0.9);
   for (let i = 3; i < 12; i += 3) g.strokeLineShape(new Phaser.Geom.Line(3, i, 11, i));
-  g.generateTexture('paper', 14, 15);
+  gen('paper', 14, 15);
 
   // ---- crate ----
   g.clear();
@@ -186,7 +191,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.lineStyle(2, 0x4f3a1c, 1);
   g.strokeRect(1, 1, 26, 22);
   g.strokeLineShape(new Phaser.Geom.Line(14, 0, 14, 24));
-  g.generateTexture('crate', 28, 24);
+  gen('crate', 28, 24);
 
   // ---- sign ----
   g.clear();
@@ -196,7 +201,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillRect(0, 0, 22, 14);
   g.lineStyle(1, 0x2a2a1a, 1);
   g.strokeRect(0, 0, 22, 14);
-  g.generateTexture('sign', 22, 26);
+  gen('sign', 22, 26);
 
   // ---- note (scrap of paper on floor) ----
   g.clear();
@@ -208,7 +213,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.lineTo(1, 10);
   g.closePath();
   g.fillPath();
-  g.generateTexture('note', 14, 11);
+  gen('note', 14, 11);
 
   // ---- corpse (stain + slumped shape) ----
   g.clear();
@@ -217,7 +222,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillStyle(0x1e1a12, 1);
   g.fillEllipse(14, 8, 16, 7);
   g.fillCircle(23, 7, 4);
-  g.generateTexture('corpse', 34, 20);
+  gen('corpse', 34, 20);
 
   // ---- agent capsule (white; tinted per agent) ----
   g.clear();
@@ -227,7 +232,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillStyle(0x222222, 1);
   g.fillRect(6, 5, 2, 2);
   g.fillRect(11, 5, 2, 2);
-  g.generateTexture('agent', 18, 34);
+  gen('agent', 18, 34);
 
   // ---- monster ----
   g.clear();
@@ -242,7 +247,7 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillCircle(18, 10, 2);
   g.fillStyle(0x8b0000, 0.8);
   g.fillCircle(27, 12, 1.5);
-  g.generateTexture('monster', 44, 84);
+  gen('monster', 44, 84);
 
   // ---- chaos agent (glitchy silhouette) ----
   g.clear();
@@ -255,13 +260,13 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillStyle(0x0a0a0a, 1);
   g.fillRect(7, 5, 3, 3);
   g.fillRect(13, 5, 3, 3);
-  g.generateTexture('chaos', 24, 46);
+  gen('chaos', 24, 46);
 
   // ---- particle spark ----
   g.clear();
   g.fillStyle(0xffd75e, 1);
   g.fillRect(0, 0, 3, 3);
-  g.generateTexture('spark', 3, 3);
+  gen('spark', 3, 3);
 
   g.destroy();
 }
