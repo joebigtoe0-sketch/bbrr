@@ -252,7 +252,8 @@ export class Maze {
       for (let d = 0; d < doorways; d++) {
         const off = randInt(erng, 2, S - 3);
         if (d === 0) firstOff = off;
-        else if (off === firstOff) continue; // never overwrite the guaranteed open door
+        // a second door right beside the first looks absurd — keep them apart
+        else if (Math.abs(off - firstOff) < 4) continue;
         const v: number = d > 0 && erng() < 0.25 ? EDGE.DoorLocked : EDGE.DoorOpen;
         set(off, v);
       }
@@ -288,7 +289,7 @@ export class Maze {
         // rare extra locked door elsewhere on the line (also off the ends)
         if (h >= 5 && rng() < 0.15) {
           const ly = randInt(rng, y0 + 1, y0 + h - 2);
-          if (ly !== dy) wallsV[at(sx, ly)] = EDGE.DoorLocked;
+          if (Math.abs(ly - dy) >= 3) wallsV[at(sx, ly)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, sx - x0, h, depth + 1);
         subdivide(sx, y0, w - (sx - x0), h, depth + 1);
@@ -306,7 +307,7 @@ export class Maze {
         wallsH[at(dx, sy)] = EDGE.DoorOpen;
         if (w >= 5 && rng() < 0.15) {
           const lx = randInt(rng, x0 + 1, x0 + w - 2);
-          if (lx !== dx) wallsH[at(lx, sy)] = EDGE.DoorLocked;
+          if (Math.abs(lx - dx) >= 3) wallsH[at(lx, sy)] = EDGE.DoorLocked;
         }
         subdivide(x0, y0, w, sy - y0, depth + 1);
         subdivide(x0, sy, w, h - (sy - y0), depth + 1);

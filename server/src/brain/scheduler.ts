@@ -67,8 +67,11 @@ export class BrainScheduler {
   };
 
   private brainFor(a: AgentRuntime): Brain {
-    const wantOpenai =
-      a.brainKind === 'openai' && !!config.OPENAI_API_KEY && !this.budgetExceeded;
+    // global modes are authoritative; per-agent brainKind only matters in hybrid
+    const modeWants =
+      config.BRAIN_MODE === 'openai' ||
+      (config.BRAIN_MODE === 'hybrid' && a.brainKind === 'openai');
+    const wantOpenai = modeWants && !!config.OPENAI_API_KEY && !this.budgetExceeded;
     const desired = wantOpenai ? 'openai' : 'mock';
     let b = this.brains.get(a.id);
     if (!b || b.kind !== desired) {

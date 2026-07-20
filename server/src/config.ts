@@ -1,5 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+
+// the .env lives at the repo root; the server's CWD is the server workspace,
+// so load the root file explicitly (plus any server-local .env as fallback)
+dotenv.config({ path: resolve(fileURLToPath(import.meta.url), '../../../.env') });
+dotenv.config();
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(8080),

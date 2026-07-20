@@ -44,7 +44,7 @@ export class OpenAIBrain implements Brain {
 
   async decide(obs: Observation): Promise<BrainDecision> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       const res = await getClient().chat.completions.create(
         {
@@ -73,8 +73,9 @@ export class OpenAIBrain implements Brain {
       this.stats.parseFailures++;
       console.warn(`[brain] parse failure, falling back to mock. raw: ${raw.slice(0, 200)}`);
     } catch (err) {
-      if ((err as Error).name === 'AbortError') this.stats.timeouts++;
-      else console.warn(`[brain] LLM call failed: ${(err as Error).message}`);
+      const e = err as Error;
+      if (e.name === 'AbortError' || /abort/i.test(e.message)) this.stats.timeouts++;
+      else console.warn(`[brain] LLM call failed: ${e.message}`);
     } finally {
       clearTimeout(timeout);
     }

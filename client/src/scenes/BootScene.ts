@@ -19,6 +19,7 @@ const PROP_TEXTURES: [string, string][] = [
   ['lightOff', '/sprites/generated/light_on.png'],
   // source material for the sheared wall/door planes
   ['wallpaperStrip', '/sprites/generated/wallpaper_strip.png'],
+  ['doorLeaf', '/sprites/generated/door_locked.png'],
 ];
 
 export class BootScene extends Phaser.Scene {

@@ -42,10 +42,26 @@ export function generateWallTexturesFromWallpaper(scene: Phaser.Scene) {
       ctx.fillRect(0.8 * W - 1.5, 8, 1.5, WALL_H - 8);
       ctx.fillRect(0.2 * W, 8, 0.6 * W, 1.5); // lintel underline
     } else if (style === 'locked') {
-      ctx.fillStyle = '#241a0e';
-      ctx.fillRect(0.14 * W, 6, 0.72 * W, WALL_H - 6);
-      ctx.fillStyle = '#b3312e';
-      ctx.fillRect(0.2 * W, WALL_H / 2 - 2, 0.6 * W, 4);
+      if (scene.textures.exists('doorLeaf')) {
+        // generated sealed-door art, cropped past its baked-in wall margin
+        const leaf = scene.textures.get('doorLeaf').getSourceImage() as HTMLImageElement;
+        ctx.drawImage(
+          leaf,
+          leaf.width * 0.08,
+          leaf.height * 0.02,
+          leaf.width * 0.84,
+          leaf.height * 0.96,
+          0.12 * W,
+          5,
+          0.76 * W,
+          WALL_H - 5,
+        );
+      } else {
+        ctx.fillStyle = '#241a0e';
+        ctx.fillRect(0.14 * W, 6, 0.72 * W, WALL_H - 6);
+        ctx.fillStyle = '#b3312e';
+        ctx.fillRect(0.2 * W, WALL_H / 2 - 2, 0.6 * W, 4);
+      }
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);

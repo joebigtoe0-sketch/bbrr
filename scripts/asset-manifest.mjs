@@ -108,6 +108,13 @@ export const ASSETS = [
     prompt:
       'A seamless tileable wall texture, flat front-on view, evenly lit: aged institutional wallpaper in uniform mustard-olive (#9c8f45), faint vertical striping, water stains and scuffs, a darker baseboard band (#574d26) along the bottom edge. Seamless left-to-right.',
   },
+  {
+    key: 'door_locked',
+    file: 'door_locked.png',
+    size: '1024x1536',
+    prompt:
+      'A closed, sealed institutional door texture, flat FRONT-ON view filling the entire frame edge-to-edge (no perspective, no surroundings, full-bleed). Heavy aged dark door, grimy panels, a bold red painted horizontal seal band across the middle with worn hazard scrawl, a couple of nailed boards, scratches near the handle. Ominous, found-footage horror. Evenly lit, no shadows cast outward.',
+  },
 
   // ---- character concept frames (portrait) ----
   // gpt-image-1 makes strong single poses, NOT clean walk sheets. Use these as
