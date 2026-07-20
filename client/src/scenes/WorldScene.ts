@@ -43,7 +43,40 @@ interface AgentView {
   queue: { x: number; y: number }[];
   /** smoothed flashlight beam angle (radians, screen space) */
   beamAngle: number;
+  /** cached shadow-cast light polygon (screen coords), 2 falloff bands */
+  lightOuter: { x: number; y: number }[] | null;
+  lightInner: { x: number; y: number }[] | null;
+  lightAt: number;
+  facing: string;
 }
+
+/** ray/segment intersection in grid space; returns distance along ray or null */
+function raySeg(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number | null {
+  const sx = bx - ax;
+  const sy = by - ay;
+  const denom = dx * sy - dy * sx;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((ax - px) * sy - (ay - py) * sx) / denom;
+  const u = ((ax - px) * dy - (ay - py) * dx) / denom;
+  if (t >= 0 && u >= -1e-6 && u <= 1 + 1e-6) return t;
+  return null;
+}
+
+const GRID_DIR: Record<string, [number, number]> = {
+  n: [0, -1],
+  s: [0, 1],
+  e: [1, 0],
+  w: [-1, 0],
+};
 
 /** a text drifting upward until it leaves the top of the screen */
 interface Floater {
@@ -105,7 +138,9 @@ export class WorldScene extends Phaser.Scene {
   private eraserCone!: Phaser.GameObjects.Image;
   private eraserPool!: Phaser.GameObjects.Image;
   private eraserChunk!: Phaser.GameObjects.Image;
+  private lightGfx!: Phaser.GameObjects.Graphics;
   private monsterEyes!: Phaser.GameObjects.Image;
+  private monsterMark!: Phaser.GameObjects.Image;
   /** per-chunk powered-light intensity, tweened on power events */
   private power = new Map<string, { v: number }>();
   /** wall keys to keep translucent because evidence sits right behind them */
@@ -126,17 +161,19 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#050503');
     this.cameras.main.setZoom(1.8);
 
-    // the darkness: a screen-space veil that light sources erase holes into
+    // the darkness: a WORLD-space veil resized to the camera's view each
+    // frame (screen-pinned overlays get scaled by camera zoom and stop
+    // covering the screen when zooming out)
     this.darkRT = this.add
       .renderTexture(0, 0, this.scale.width, this.scale.height)
       .setOrigin(0, 0)
-      .setScrollFactor(0)
       .setDepth(DARKNESS_DEPTH);
-    this.scale.on('resize', (s: Phaser.Structs.Size) => this.darkRT.resize(s.width, s.height));
     this.eraserCone = this.add.image(0, 0, 'flashCone').setOrigin(0.02, 0.5).setVisible(false);
     this.eraserPool = this.add.image(0, 0, 'flashPool').setOrigin(0.5).setVisible(false);
     this.eraserChunk = this.add.image(0, 0, 'chunkLight').setOrigin(0.5).setVisible(false);
+    this.lightGfx = this.add.graphics().setVisible(false);
     this.monsterEyes = this.add.image(0, 0, 'eyes').setDepth(BLIP_DEPTH).setVisible(false);
+    this.monsterMark = this.add.image(0, 0, 'monsterMark').setDepth(BLIP_DEPTH).setVisible(false);
 
     this.monsterView = this.add
       .image(0, 0, 'monster')
@@ -584,17 +621,89 @@ export class WorldScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5);
-      v = { sprite, label, gx: a.x, gy: a.y, queue: [], beamAngle: FACING_ANGLE.s! };
+      v = {
+        sprite,
+        label,
+        gx: a.x,
+        gy: a.y,
+        queue: [],
+        beamAngle: FACING_ANGLE.s!,
+        lightOuter: null,
+        lightInner: null,
+        lightAt: 0,
+        facing: a.facing,
+      };
       this.agentViews.set(a.id, v);
     }
     const last = v.queue[v.queue.length - 1];
     if (!last || Math.abs(last.x - a.x) > 0.001 || Math.abs(last.y - a.y) > 0.001) {
       v.queue.push({ x: a.x, y: a.y });
     }
+    v.facing = a.facing;
     if (a.state === 'dead') {
       v.sprite.setTint(0x333333);
       v.sprite.setAlpha(0.6);
     }
+  }
+
+  /**
+   * Shadow-cast the agent's flashlight in GRID space: a fan of rays against
+   * nearby wall/locked-door edges. Long reach inside the beam cone, short
+   * omni bubble otherwise. Projected to screen coords through the iso
+   * transform (affine, so straight shadow edges stay straight).
+   */
+  private computeLight(v: AgentView) {
+    v.lightAt = this.time.now;
+    const px = v.gx;
+    const py = v.gy;
+    const R = 7.5;
+    const Rs = 1.7;
+    const fd = GRID_DIR[v.facing] ?? [0, 1];
+    const beamAng = Math.atan2(fd[1]!, fd[0]!);
+
+    // collect blocking edges (walls + locked doors) around the agent
+    const segs: [number, number, number, number][] = [];
+    const minX = Math.floor(px - R - 1);
+    const maxX = Math.ceil(px + R + 1);
+    const minY = Math.floor(py - R - 1);
+    const maxY = Math.ceil(py + R + 1);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        const c = this.store.chunks.get(chunkKey(tileToChunk(tx), tileToChunk(ty)));
+        if (!c) continue;
+        const li =
+          ((((ty % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE) * CHUNK_SIZE) +
+          (((tx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE);
+        const h = c.wallsH[li]!;
+        const vv = c.wallsV[li]!;
+        if (h === EDGE.Wall || h === EDGE.DoorLocked) segs.push([tx, ty, tx + 1, ty]);
+        if (vv === EDGE.Wall || vv === EDGE.DoorLocked) segs.push([tx, ty, tx, ty + 1]);
+      }
+    }
+
+    const outer: { x: number; y: number }[] = [];
+    const inner: { x: number; y: number }[] = [];
+    const N = 84;
+    for (let i = 0; i < N; i++) {
+      const th = (i / N) * Math.PI * 2;
+      let dAng = Math.abs(th - beamAng);
+      if (dAng > Math.PI) dAng = Math.PI * 2 - dAng;
+      const maxR = dAng < 0.72 ? R : Rs;
+      const dx = Math.cos(th);
+      const dy = Math.sin(th);
+      let t = maxR;
+      for (const s of segs) {
+        const hit = raySeg(px, py, dx, dy, s[0], s[1], s[2], s[3]);
+        if (hit !== null && hit < t) t = hit;
+      }
+      const op = entityToScreen(px + dx * t, py + dy * t);
+      outer.push({ x: op.sx, y: op.sy });
+      const ti = Math.min(t, maxR * 0.55);
+      const ip = entityToScreen(px + dx * ti, py + dy * ti);
+      inner.push({ x: ip.sx, y: ip.sy });
+    }
+    v.lightOuter = outer;
+    v.lightInner = inner;
   }
 
   private updateMonster() {
@@ -894,6 +1003,11 @@ export class WorldScene extends Phaser.Scene {
         .setPosition(p.sx - 3, p.sy - 60)
         .setVisible(Math.random() > 0.04)
         .setAlpha(0.75 + Math.random() * 0.25);
+      // hazard marker so spectators can track where it is headed
+      this.monsterMark
+        .setPosition(p.sx, p.sy - 96 + Math.sin(_time * 0.004) * 3)
+        .setAlpha(0.7 + Math.sin(_time * 0.008) * 0.3)
+        .setVisible(true);
     }
     // chaos flicker
     if (this.chaosView.visible) {
@@ -915,11 +1029,20 @@ export class WorldScene extends Phaser.Scene {
     {
       const cam = this.cameras.main;
       const view = cam.worldView;
-      const z = cam.zoom;
-      const toScreen = (wx: number, wy: number) => ({
-        x: (wx - view.x) * z,
-        y: (wy - view.y) * z,
-      });
+      // world-space veil sized to the view (margin avoids per-frame resizes)
+      const needW = Math.ceil(view.width) + 8;
+      const needH = Math.ceil(view.height) + 8;
+      if (
+        this.darkRT.width < needW ||
+        this.darkRT.height < needH ||
+        this.darkRT.width > needW + 500 ||
+        this.darkRT.height > needH + 500
+      ) {
+        this.darkRT.resize(needW + 120, needH + 120);
+      }
+      const rtX = view.x - 4;
+      const rtY = view.y - 4;
+      this.darkRT.setPosition(rtX, rtY);
       this.darkRT.clear();
       this.darkRT.fill(0x030304, 0.93);
       // powered sectors
@@ -927,25 +1050,32 @@ export class WorldScene extends Phaser.Scene {
         if (rec.v <= 0.02) continue;
         const [cx, cy] = key.split(',').map(Number);
         const center = gridToScreen(cx! * CHUNK_SIZE + 8, cy! * CHUNK_SIZE + 8);
-        const s = toScreen(center.sx, center.sy);
-        if (s.x < -900 * z || s.x > this.scale.width + 900 * z) continue;
-        if (s.y < -600 * z || s.y > this.scale.height + 600 * z) continue;
-        this.eraserChunk.setScale(2.4 * z).setAlpha(rec.v);
-        this.darkRT.erase(this.eraserChunk, s.x, s.y);
+        if (center.sx < view.x - 900 || center.sx > view.right + 900) continue;
+        if (center.sy < view.y - 600 || center.sy > view.bottom + 600) continue;
+        this.eraserChunk.setScale(2.4).setAlpha(rec.v);
+        this.darkRT.erase(this.eraserChunk, center.sx - rtX, center.sy - rtY);
       }
-      // flashlights: a cone in the facing direction plus a personal pool
+      // flashlights: shadow-cast light polygons — light cannot pass walls
       for (const v of this.agentViews.values()) {
-        const s = toScreen(v.sprite.x, v.sprite.y - 12);
-        this.eraserPool.setScale(0.9 * z).setAlpha(0.95);
-        this.darkRT.erase(this.eraserPool, s.x, s.y);
-        this.eraserCone.setRotation(v.beamAngle).setScale(1.05 * z).setAlpha(0.92);
-        this.darkRT.erase(this.eraserCone, s.x, s.y);
+        if (_time - v.lightAt > 90) this.computeLight(v);
+        if (v.lightOuter && v.lightOuter.length > 2) {
+          this.lightGfx.clear();
+          this.lightGfx.fillStyle(0xffffff, 0.55);
+          this.lightGfx.fillPoints(v.lightOuter, true);
+          if (v.lightInner && v.lightInner.length > 2) {
+            this.lightGfx.fillStyle(0xffffff, 0.6);
+            this.lightGfx.fillPoints(v.lightInner, true);
+          }
+          this.darkRT.erase(this.lightGfx, -rtX, -rtY);
+        }
+        // tight personal glow (soft center; too small to leak through walls)
+        this.eraserPool.setScale(0.45).setAlpha(0.9);
+        this.darkRT.erase(this.eraserPool, v.sprite.x - rtX, v.sprite.y - 14 - rtY);
       }
       // the chaos thing glows faintly when it manifests
       if (this.chaosView.visible) {
-        const s = toScreen(this.chaosView.x, this.chaosView.y - 16);
-        this.eraserPool.setScale(0.55 * z).setAlpha(0.55);
-        this.darkRT.erase(this.eraserPool, s.x, s.y);
+        this.eraserPool.setScale(0.5).setAlpha(0.55);
+        this.darkRT.erase(this.eraserPool, this.chaosView.x - rtX, this.chaosView.y - 16 - rtY);
       }
     }
 

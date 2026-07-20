@@ -84,6 +84,32 @@ export function generateLightingTextures(scene: Phaser.Scene) {
       tex.refresh();
     }
   }
+  // red hazard marker hovering over the monster, visible through darkness
+  {
+    const tex = scene.textures.createCanvas('monsterMark', 26, 24);
+    if (tex) {
+      const ctx = tex.getContext();
+      const g = ctx.createRadialGradient(13, 12, 2, 13, 12, 13);
+      g.addColorStop(0, 'rgba(255,60,50,0.5)');
+      g.addColorStop(1, 'rgba(255,60,50,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 26, 24);
+      ctx.beginPath();
+      ctx.moveTo(13, 3);
+      ctx.lineTo(23, 20);
+      ctx.lineTo(3, 20);
+      ctx.closePath();
+      ctx.fillStyle = '#c81e14';
+      ctx.fill();
+      ctx.strokeStyle = '#4a0805';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#ffe9e6';
+      ctx.fillRect(12, 8, 2, 7);
+      ctx.fillRect(12, 16.5, 2, 2);
+      tex.refresh();
+    }
+  }
   // the monster's eyes never stop being visible
   {
     const tex = scene.textures.createCanvas('eyes', 14, 6);
