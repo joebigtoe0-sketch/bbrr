@@ -150,6 +150,8 @@ export class WorldScene extends Phaser.Scene {
   private monsterMark!: Phaser.GameObjects.Image;
   /** per-chunk powered-light intensity, tweened on power events */
   private power = new Map<string, { v: number }>();
+  /** shadow-cast room-light polygons per powered chunk (fixtures don't move) */
+  private roomLightCache = new Map<string, { x: number; y: number }[][]>();
   /** wall keys to keep translucent because evidence sits right behind them */
   private evidenceFadeKeys = new Set<string>();
   private evidenceFadeDirty = true;
@@ -308,6 +310,7 @@ export class WorldScene extends Phaser.Scene {
       for (const wk of old.wallKeys) this.wallIndex.delete(wk);
       this.chunkViews.delete(key);
     }
+    this.roomLightCache.delete(key);
 
     const S = CHUNK_SIZE;
     const origin = { gx: c.cx * S, gy: c.cy * S };
@@ -715,20 +718,8 @@ export class WorldScene extends Phaser.Scene {
    * omni bubble otherwise. Projected to screen coords through the iso
    * transform (affine, so straight shadow edges stay straight).
    */
-  private computeLight(v: AgentView) {
-    v.lightAt = this.time.now;
-    v.lightGX = v.gx;
-    v.lightGY = v.gy;
-    const px = v.gx;
-    const py = v.gy;
-    // a dying battery pulls the light in until it is a guttering puddle
-    const bf = v.battery <= 0 ? 0.16 : 0.35 + 0.65 * Math.pow(v.battery / 100, 0.7);
-    const R = 7.0 * bf;
-    const Rs = 3.2 * bf;
-    const fd = GRID_DIR[v.facing] ?? [0, 1];
-    const beamAng = Math.atan2(fd[1]!, fd[0]!);
-
-    // collect blocking edges (walls + locked doors) around the agent
+  /** blocking edges (walls + locked doors) within R tiles of a point */
+  private gatherSegs(px: number, py: number, R: number): [number, number, number, number][] {
     const segs: [number, number, number, number][] = [];
     const minX = Math.floor(px - R - 1);
     const maxX = Math.ceil(px + R + 1);
@@ -747,6 +738,66 @@ export class WorldScene extends Phaser.Scene {
         if (vv === EDGE.Wall || vv === EDGE.DoorLocked) segs.push([tx, ty, tx, ty + 1]);
       }
     }
+    return segs;
+  }
+
+  /** omni light from a ceiling fixture, clipped by the room's walls */
+  private castRoomLight(px: number, py: number, R: number): { x: number; y: number }[] {
+    const segs = this.gatherSegs(px, py, R);
+    const pts: { x: number; y: number }[] = [];
+    const N = 64;
+    for (let i = 0; i < N; i++) {
+      const th = (i / N) * Math.PI * 2;
+      const dx = Math.cos(th);
+      const dy = Math.sin(th);
+      let t = R;
+      for (const s of segs) {
+        const hit = raySeg(px, py, dx, dy, s[0], s[1], s[2], s[3]);
+        if (hit !== null && hit < t) t = hit;
+      }
+      const op = entityToScreen(px + dx * t, py + dy * t);
+      pts.push({ x: op.sx, y: op.sy });
+    }
+    return pts;
+  }
+
+  /** every fixture in the chunk lights its own room (cached per chunk) */
+  private roomLightsFor(key: string, c: MazeChunk): { x: number; y: number }[][] {
+    let polys = this.roomLightCache.get(key);
+    if (polys) return polys;
+    polys = [];
+    const S = CHUNK_SIZE;
+    for (let ly = 0; ly < S; ly++) {
+      for (let lx = 0; lx < S; lx++) {
+        const gx = c.cx * S + lx;
+        const gy = c.cy * S + ly;
+        if (
+          c.tiles[ly * S + lx] === TILE.Floor &&
+          (((gx % 6) + 6) % 6) === 2 &&
+          (((gy % 6) + 6) % 6) === 3
+        ) {
+          polys.push(this.castRoomLight(gx + 0.5, gy + 0.5, 5.5));
+        }
+      }
+    }
+    this.roomLightCache.set(key, polys);
+    return polys;
+  }
+
+  private computeLight(v: AgentView) {
+    v.lightAt = this.time.now;
+    v.lightGX = v.gx;
+    v.lightGY = v.gy;
+    const px = v.gx;
+    const py = v.gy;
+    // a dying battery pulls the light in until it is a guttering puddle
+    const bf = v.battery <= 0 ? 0.16 : 0.35 + 0.65 * Math.pow(v.battery / 100, 0.7);
+    const R = 7.0 * bf;
+    const Rs = 3.2 * bf;
+    const fd = GRID_DIR[v.facing] ?? [0, 1];
+    const beamAng = Math.atan2(fd[1]!, fd[0]!);
+
+    const segs = this.gatherSegs(px, py, R);
 
     const outer: { x: number; y: number }[] = [];
     const N = 96;
@@ -1163,19 +1214,26 @@ export class WorldScene extends Phaser.Scene {
       this.darkRT.fill(0x030304, veilAlpha);
       // all stamping below is in SCREEN pixels
       const toRT = (wx: number, wy: number) => ({ x: (wx - vx) * z, y: (wy - vy) * z });
-      // powered sectors
+      // powered sectors: each ceiling fixture lights its own ROOM — the
+      // light is shadow-cast and stops at the room's walls
+      this.lightGfx.setScale(z);
       for (const [key, rec] of this.power) {
         if (rec.v <= 0.02) continue;
         const [cx, cy] = key.split(',').map(Number);
         const center = gridToScreen(cx! * CHUNK_SIZE + 8, cy! * CHUNK_SIZE + 8);
         if (center.sx < vx - 900 || center.sx > vx + vw + 900) continue;
         if (center.sy < vy - 600 || center.sy > vy + vh + 600) continue;
-        const s = toRT(center.sx, center.sy);
-        this.eraserChunk.setScale(2.4 * z).setAlpha(rec.v);
-        this.darkRT.erase(this.eraserChunk, s.x, s.y);
+        const c = this.store.chunks.get(key);
+        if (!c) continue;
+        for (const poly of this.roomLightsFor(key, c)) {
+          if (poly.length < 3) continue;
+          this.lightGfx.clear();
+          this.lightGfx.fillStyle(0xffffff, 0.58 * rec.v);
+          this.lightGfx.fillPoints(poly, true);
+          this.darkRT.erase(this.lightGfx, -vx * z, -vy * z);
+        }
       }
       // flashlights: shadow-cast light polygons — light cannot pass walls
-      this.lightGfx.setScale(z);
       for (const v of this.agentViews.values()) {
         const moved = Math.hypot(v.gx - v.lightGX, v.gy - v.lightGY);
         if (_time - v.lightAt > 70 || moved > 0.35) this.computeLight(v);
