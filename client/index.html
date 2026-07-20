@@ -43,6 +43,8 @@
     .bar > div { height: 100%; transition: width 0.5s; }
     .bar.stress > div { background: var(--red); }
     .bar.attention > div { background: var(--amber); }
+    .bar.battery > div { background: #6bd7ff; }
+    .bar.energy > div { background: #9dff6b; }
     .death-row { font-size: 10px; color: #6b5050; padding: 3px 6px; }
     #spawn-btn {
       width: 100%; padding: 10px; margin-top: 8px; background: #1a180e;
@@ -112,6 +114,46 @@
 
     #hint { position: absolute; bottom: 10px; right: 14px; font-size: 10px; color: #4a4428; z-index: 5; }
 
+    /* ---------- panel buttons ---------- */
+    #panel-btns { display: flex; gap: 6px; margin-top: 8px; }
+    #panel-btns button {
+      flex: 1; padding: 7px 0; background: #14120b; border: 1px solid #3a3420;
+      color: #8a7d3a; font-family: inherit; font-size: 10px; letter-spacing: 2px; cursor: pointer;
+    }
+    #panel-btns button:hover { color: var(--yellow); }
+    #panel-btns button.active { border-color: var(--green); color: var(--green); }
+
+    /* ---------- right panel ---------- */
+    #right-panel {
+      position: absolute; top: 0; right: 0; bottom: 0; width: 320px;
+      background: var(--panel); border-left: 1px solid #2a2618;
+      padding: 12px; overflow-y: auto; z-index: 10; display: none;
+      scrollbar-width: thin; scrollbar-color: #3a3420 transparent;
+    }
+    #right-panel.open { display: block; }
+    #right-panel h2 {
+      font-size: 11px; letter-spacing: 3px; color: #6b6340; margin-bottom: 10px;
+      display: flex; justify-content: space-between;
+    }
+    #right-panel h2 button { background: none; border: none; color: #6b6340; cursor: pointer; font-family: inherit; }
+    .log-line { font-size: 10px; line-height: 1.5; padding: 3px 0; border-bottom: 1px solid #1a180e; color: #9a8d55; }
+    .log-line .t { color: #55502e; margin-right: 6px; }
+    .log-line.death { color: var(--red); }
+    .log-line.hunt { color: #ff8d6b; }
+    .log-line.tweet { color: var(--green); }
+    .log-line.speech { color: #d8d3b0; }
+    .tweet-card {
+      border: 1px solid #1f4a2a; background: rgba(4,12,6,0.6); padding: 9px 10px;
+      margin-bottom: 8px; font-size: 11px; line-height: 1.55; color: var(--green);
+    }
+    .tweet-card .meta { font-size: 9px; color: #3f7a4d; margin-top: 6px; letter-spacing: 1px; }
+    .record-card {
+      border: 1px solid #3a3420; background: rgba(20,18,10,0.6); padding: 10px;
+      margin-bottom: 10px; font-size: 11px; line-height: 1.55; color: #b0a56a;
+    }
+    .record-card .rname { font-size: 12px; color: var(--yellow); letter-spacing: 1px; }
+    .record-card .rmeta { font-size: 9px; color: #6b6340; margin: 3px 0 7px; }
+
     /* ---------- CRT overlay: scanlines + vignette + subtle flicker ---------- */
     #crt-overlay {
       position: absolute; inset: 0; z-index: 3; pointer-events: none;
@@ -138,6 +180,11 @@
     <h1>THE BACKROOMS</h1>
     <div class="sub">live feed — do not trust the signs</div>
     <button id="spawn-btn">+ SEND SOMEONE IN</button>
+    <div id="panel-btns">
+      <button id="btn-log">LOG</button>
+      <button id="btn-tweets">TWEETS</button>
+      <button id="btn-records">RECORDS</button>
+    </div>
     <h2>Inside now</h2>
     <div id="agent-list"></div>
     <h2>Did not make it</h2>
@@ -167,6 +214,11 @@
   <div id="tunein">
     <div>TUNING INTO MIND FREQUENCY</div>
     <div class="freq" id="tunein-freq">87.4 MHz</div>
+  </div>
+
+  <div id="right-panel">
+    <h2><span id="right-title">LOG</span><button id="right-close">[x]</button></h2>
+    <div id="right-content"></div>
   </div>
 
   <div id="toasts"></div>

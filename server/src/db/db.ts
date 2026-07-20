@@ -63,6 +63,23 @@ CREATE TABLE IF NOT EXISTS chunks (
   version INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tweets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'ambient',
+  tick INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS case_files (
+  agent_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  story TEXT NOT NULL,
+  born_at INTEGER NOT NULL,
+  died_at INTEGER NOT NULL,
+  cause TEXT,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS world_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL,
@@ -71,3 +88,15 @@ CREATE TABLE IF NOT EXISTS world_events (
   created_at INTEGER NOT NULL
 );
 `);
+
+// additive columns for worlds created before batteries existed
+for (const ddl of [
+  'ALTER TABLE agents ADD COLUMN battery REAL NOT NULL DEFAULT 100',
+  'ALTER TABLE agents ADD COLUMN energy REAL NOT NULL DEFAULT 100',
+]) {
+  try {
+    db.exec(ddl);
+  } catch {
+    // column already exists
+  }
+}

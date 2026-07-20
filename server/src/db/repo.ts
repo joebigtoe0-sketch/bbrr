@@ -65,10 +65,11 @@ export const chunkRepo = {
 
 // ---------- agents ----------
 const agentUpsertStmt = db.prepare(`
-  INSERT INTO agents (id, name, objective, status, x, y, stress, attention, hue, brain_mode, created_at, died_at, death_cause)
-  VALUES (@id, @name, @objective, @status, @x, @y, @stress, @attention, @hue, @brain_mode, @created_at, @died_at, @death_cause)
+  INSERT INTO agents (id, name, objective, status, x, y, stress, attention, battery, energy, hue, brain_mode, created_at, died_at, death_cause)
+  VALUES (@id, @name, @objective, @status, @x, @y, @stress, @attention, @battery, @energy, @hue, @brain_mode, @created_at, @died_at, @death_cause)
   ON CONFLICT(id) DO UPDATE SET status=excluded.status, x=excluded.x, y=excluded.y,
-    stress=excluded.stress, attention=excluded.attention, died_at=excluded.died_at, death_cause=excluded.death_cause
+    stress=excluded.stress, attention=excluded.attention, battery=excluded.battery,
+    energy=excluded.energy, died_at=excluded.died_at, death_cause=excluded.death_cause
 `);
 export interface AgentRow {
   id: string;
@@ -79,6 +80,8 @@ export interface AgentRow {
   y: number;
   stress: number;
   attention: number;
+  battery: number;
+  energy: number;
   hue: number;
   brain_mode: string;
   created_at: number;
@@ -189,6 +192,56 @@ export const evidenceRepo = {
     }));
   },
 };
+
+// ---------- tweets (the maze's internal feed; nothing real is posted) ----------
+const tweetInsertStmt = db.prepare(
+  'INSERT INTO tweets (text, kind, tick, created_at) VALUES (?, ?, ?, ?)',
+);
+export const tweetRepo = {
+  insert(text: string, kind: string, tick: number) {
+    tweetInsertStmt.run(text, kind, tick, Date.now());
+  },
+  latest(limit: number): { id: number; text: string; kind: string; created_at: number }[] {
+    return db
+      .prepare('SELECT id, text, kind, created_at FROM tweets ORDER BY id DESC LIMIT ?')
+      .all(limit) as { id: number; text: string; kind: string; created_at: number }[];
+  },
+};
+
+// ---------- case files ----------
+const caseInsertStmt = db.prepare(`
+  INSERT INTO case_files (agent_id, name, objective, story, born_at, died_at, cause, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(agent_id) DO UPDATE SET story=excluded.story
+`);
+export const caseFileRepo = {
+  insert(
+    agentId: string,
+    name: string,
+    objective: string,
+    story: string,
+    bornAt: number,
+    diedAt: number,
+    cause: string,
+  ) {
+    caseInsertStmt.run(agentId, name, objective, story, bornAt, diedAt, cause, Date.now());
+  },
+  latest(limit: number): CaseFileRow[] {
+    return db
+      .prepare('SELECT * FROM case_files ORDER BY died_at DESC LIMIT ?')
+      .all(limit) as CaseFileRow[];
+  },
+};
+
+export interface CaseFileRow {
+  agent_id: string;
+  name: string;
+  objective: string;
+  story: string;
+  born_at: number;
+  died_at: number;
+  cause: string | null;
+}
 
 // ---------- world events ----------
 const eventInsertStmt = db.prepare(

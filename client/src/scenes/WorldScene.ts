@@ -12,11 +12,14 @@ import {
   screenToGrid,
 } from '../render/iso.js';
 import {
+  appendLog,
   initReader,
+  initRightPanel,
   initSpawnModal,
   openReader,
   playTuneIn,
   refreshDeaths,
+  refreshTweets,
   renderAgentList,
   toast,
 } from '../ui/dom.js';
@@ -51,6 +54,7 @@ interface AgentView {
   lightGX: number;
   lightGY: number;
   facing: string;
+  battery: number;
 }
 
 /** ray/segment intersection in grid space; returns distance along ray or null */
@@ -267,7 +271,11 @@ export class WorldScene extends Phaser.Scene {
     };
     s.onLight = (cx, cy, on) => this.onLightChange(cx, cy, on);
     s.onWorldEvent = (e) => this.handleWorldEvent(e);
-    s.onSpeech = (agentId, text) => this.showSpeech(agentId, text);
+    s.onSpeech = (agentId, text) => {
+      this.showSpeech(agentId, text);
+      const who = s.agents.get(agentId)?.name ?? '???';
+      appendLog(`${who}: "${text}"`, 'speech');
+    };
     s.onThought = (t) => this.showThought(t);
   }
 
@@ -518,6 +526,41 @@ export class WorldScene extends Phaser.Scene {
         objs.push(img);
         break;
       }
+      case 'anomaly': {
+        const variant = (e.meta?.variant as string) ?? 'phone';
+        const tex = variant === 'redlamp' ? 'redlamp' : variant === 'elevator' ? 'elevator' : 'phone';
+        const img = this.add
+          .image(p.sx, p.sy + 6, tex)
+          .setOrigin(0.5, 1)
+          .setDepth(eDepth());
+        interactive(img, () => openReader('ANOMALY', [e.text ?? 'It should not be here.']));
+        objs.push(img);
+        if (variant === 'redlamp') {
+          // a red beacon burning through the darkness
+          const glow = this.add
+            .image(p.sx, p.sy - 14, 'blipRed')
+            .setScale(3.2)
+            .setDepth(BLIP_DEPTH)
+            .setAlpha(0.7);
+          this.tweens.add({ targets: glow, alpha: 0.35, duration: 1600, yoyo: true, repeat: -1 });
+          objs.push(glow);
+        } else if (variant === 'phone') {
+          // it rings, sometimes
+          this.tweens.add({
+            targets: img,
+            scaleX: img.scaleX * 1.12,
+            scaleY: img.scaleY * 1.12,
+            duration: 90,
+            yoyo: true,
+            repeat: 7,
+            repeatDelay: 60,
+            delay: Math.random() * 6000,
+            loop: -1,
+            loopDelay: 5000 + Math.random() * 9000,
+          });
+        }
+        break;
+      }
       case 'poster':
       case 'terminal_log': {
         const img = this.add
@@ -650,6 +693,7 @@ export class WorldScene extends Phaser.Scene {
         lightGX: a.x,
         lightGY: a.y,
         facing: a.facing,
+        battery: a.battery,
       };
       this.agentViews.set(a.id, v);
     }
@@ -658,6 +702,7 @@ export class WorldScene extends Phaser.Scene {
       v.queue.push({ x: a.x, y: a.y });
     }
     v.facing = a.facing;
+    v.battery = a.battery;
     if (a.state === 'dead') {
       v.sprite.setTint(0x333333);
       v.sprite.setAlpha(0.6);
@@ -676,8 +721,10 @@ export class WorldScene extends Phaser.Scene {
     v.lightGY = v.gy;
     const px = v.gx;
     const py = v.gy;
-    const R = 7.0;
-    const Rs = 3.2;
+    // a dying battery pulls the light in until it is a guttering puddle
+    const bf = v.battery <= 0 ? 0.16 : 0.35 + 0.65 * Math.pow(v.battery / 100, 0.7);
+    const R = 7.0 * bf;
+    const Rs = 3.2 * bf;
     const fd = GRID_DIR[v.facing] ?? [0, 1];
     const beamAng = Math.atan2(fd[1]!, fd[0]!);
 
@@ -857,6 +904,7 @@ export class WorldScene extends Phaser.Scene {
   // ---------------- world events ----------------
 
   private handleWorldEvent(e: WorldEvent) {
+    this.logWorldEvent(e);
     switch (e.type) {
       case 'viral_post': {
         const agentId = e.payload.agentId as string | undefined;
@@ -913,6 +961,56 @@ export class WorldScene extends Phaser.Scene {
       case 'door_unlock':
         toast('🔓 a door unlocked itself');
         break;
+      case 'hunt_started': {
+        toast(`⚠ something is hunting ${e.payload.name}`);
+        this.cameras.main.flash(150, 80, 0, 0);
+        break;
+      }
+      case 'maze_tweet':
+        void refreshTweets();
+        break;
+    }
+  }
+
+  private logWorldEvent(e: WorldEvent) {
+    const p = e.payload as Record<string, string>;
+    switch (e.type) {
+      case 'agent_spawned':
+        appendLog(`+ ${p.name} entered the maze (${p.objective})`);
+        break;
+      case 'agent_died':
+        appendLog(`☠ ${p.name} — ${p.cause}`, 'death');
+        break;
+      case 'hunt_started':
+        appendLog(`⚠ the thing is hunting ${p.name}`, 'hunt');
+        break;
+      case 'terminal_post':
+        appendLog(`[POST] ${p.name}: ${p.text}`);
+        break;
+      case 'maze_tweet':
+        appendLog(`🕳 ${p.text}`, 'tweet');
+        break;
+      case 'viral_post':
+        appendLog('⚡ attention surge — a sector lights up');
+        break;
+      case 'buyback':
+        appendLog('💡 buyback: power returns');
+        break;
+      case 'corridor_collapse':
+        appendLog('🔥 burn: hallways collapsed');
+        break;
+      case 'airdrop':
+        appendLog('📦 airdrop: crates fell');
+        break;
+      case 'crate_drop':
+        appendLog('📦 a supply crate appeared');
+        break;
+      case 'liquidity_up':
+        appendLog('🌊 the maze grew');
+        break;
+      case 'door_unlock':
+        appendLog('🔓 a door unlocked');
+        break;
     }
   }
 
@@ -938,6 +1036,7 @@ export class WorldScene extends Phaser.Scene {
 
   private wireUi() {
     initReader();
+    initRightPanel();
     initSpawnModal((agentId) => {
       // follow the newborn once it appears
       const tryFocus = (attempts: number) => {
@@ -1023,9 +1122,10 @@ export class WorldScene extends Phaser.Scene {
         .setVisible(Math.random() > 0.04)
         .setAlpha(0.75 + Math.random() * 0.25);
       // hazard marker so spectators can track where it is headed
+      const huntPulse = this.store.monster.mode === 'hunt' ? 3 : 1;
       this.monsterMark
-        .setPosition(p.sx, p.sy - 96 + Math.sin(_time * 0.004) * 3)
-        .setAlpha(0.7 + Math.sin(_time * 0.008) * 0.3)
+        .setPosition(p.sx, p.sy - 96 + Math.sin(_time * 0.004 * huntPulse) * 3)
+        .setAlpha(0.7 + Math.sin(_time * 0.008 * huntPulse) * 0.3)
         .setVisible(true);
     }
     // chaos flicker
@@ -1057,7 +1157,10 @@ export class WorldScene extends Phaser.Scene {
       this.darkRT.setScale(1 / z);
       this.darkRT.setPosition(vx, vy);
       this.darkRT.clear();
-      this.darkRT.fill(0x030304, 0.93);
+      // while the thing hunts, the whole veil breathes - watchers feel it
+      const hunting = this.store.monster.mode === 'hunt';
+      const veilAlpha = hunting ? 0.93 + Math.sin(_time * 0.02) * 0.035 : 0.93;
+      this.darkRT.fill(0x030304, veilAlpha);
       // all stamping below is in SCREEN pixels
       const toRT = (wx: number, wy: number) => ({ x: (wx - vx) * z, y: (wy - vy) * z });
       // powered sectors
@@ -1084,7 +1187,7 @@ export class WorldScene extends Phaser.Scene {
           const ox = (c.sx - o.sx - vx) * z;
           const oy = (c.sy - o.sy - vy) * z;
           this.lightGfx.clear();
-          this.lightGfx.fillStyle(0xffffff, 0.62);
+          this.lightGfx.fillStyle(0xffffff, v.battery <= 0 ? 0.3 : 0.45 + 0.17 * (v.battery / 100));
           this.lightGfx.fillPoints(v.lightOuter, true);
           this.darkRT.erase(this.lightGfx, ox, oy);
         }

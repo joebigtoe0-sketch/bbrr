@@ -110,6 +110,20 @@ export function generateLightingTextures(scene: Phaser.Scene) {
       tex.refresh();
     }
   }
+  // red LED blip (anomalies)
+  {
+    const tex = scene.textures.createCanvas('blipRed', 10, 10);
+    if (tex) {
+      const ctx = tex.getContext();
+      const g = ctx.createRadialGradient(5, 5, 0.5, 5, 5, 5);
+      g.addColorStop(0, 'rgba(255,110,90,1)');
+      g.addColorStop(0.4, 'rgba(230,50,40,0.8)');
+      g.addColorStop(1, 'rgba(210,30,30,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 10, 10);
+      tex.refresh();
+    }
+  }
   // the monster's eyes never stop being visible
   {
     const tex = scene.textures.createCanvas('eyes', 14, 6);
@@ -454,6 +468,44 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillRect(7, 5, 3, 3);
   g.fillRect(13, 5, 3, 3);
   gen('chaos', 24, 46);
+
+  // ---- anomalies ----
+  // old rotary phone
+  g.clear();
+  g.fillStyle(0x1c1416, 1);
+  g.fillRoundedRect(1, 8, 16, 8, 3);
+  g.fillStyle(0x2c2022, 1);
+  g.fillRoundedRect(3, 2, 12, 6, 3);
+  g.fillStyle(0x0c0a0a, 1);
+  g.fillCircle(6, 5, 1.5);
+  g.fillCircle(12, 5, 1.5);
+  g.lineStyle(1, 0x3a2c2e, 1);
+  g.strokeLineShape(new Phaser.Geom.Line(2, 9, 4, 4));
+  gen('phone', 18, 17);
+
+  // red lamp on a stalk
+  g.clear();
+  g.fillStyle(0x2a2a2a, 1);
+  g.fillRect(7, 10, 3, 14);
+  g.fillRect(4, 23, 9, 2);
+  g.fillStyle(0x8b1a12, 1);
+  g.fillCircle(8.5, 7, 6);
+  g.fillStyle(0xff5040, 0.9);
+  g.fillCircle(8.5, 7, 3.5);
+  gen('redlamp', 17, 26);
+
+  // elevator doors that open onto wall
+  g.clear();
+  g.fillStyle(0x4a4a50, 1);
+  g.fillRect(0, 0, 30, 38);
+  g.fillStyle(0x6a6a72, 1);
+  g.fillRect(2, 2, 12, 34);
+  g.fillRect(16, 2, 12, 34);
+  g.fillStyle(0x2a2a30, 1);
+  g.fillRect(14, 2, 2, 34);
+  g.fillStyle(0xffaa30, 1);
+  g.fillRect(13, -0, 4, 2);
+  gen('elevator', 30, 40);
 
   // ---- particle spark ----
   g.clear();

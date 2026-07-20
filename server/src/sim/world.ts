@@ -40,8 +40,9 @@ import {
 } from './monster.js';
 import { type ChaosRuntime, createChaos, tickChaos } from './chaos.js';
 import { rollViral } from './social.js';
-import { rngFor, randInt, hashStr } from './rng.js';
+import { rngFor, randInt, hashStr, pick } from './rng.js';
 import { ChaosTextQueue } from '../brain/chaosText.js';
+import { writeCaseFile } from '../brain/caseFile.js';
 
 type Delta = Omit<z.infer<typeof DeltaMsg>, 't'>;
 
@@ -95,6 +96,7 @@ export class World {
   private lastFlushAt = 0;
   private lastViralRollAt = 0;
   private lastRespawnAt = 0;
+  private lastLuckyCrateAt = 0;
   private lastTickAt = Date.now();
   private timer: NodeJS.Timeout | null = null;
 
@@ -182,6 +184,22 @@ export class World {
       this.lastEvictAt = now;
       this.evictChunks();
     }
+    // luck: sometimes the maze leaves supplies lying around
+    if (now - this.lastLuckyCrateAt > 150000) {
+      this.lastLuckyCrateAt = now;
+      const living = [...this.agents.values()].filter((a) => a.state !== 'dead');
+      if (living.length > 0 && Math.random() < 0.6) {
+        const a = living[Math.floor(Math.random() * living.length)]!;
+        const spot = this.maze.nearestWalkable(
+          Math.floor(a.x + (Math.random() - 0.5) * 24),
+          Math.floor(a.y + (Math.random() - 0.5) * 24),
+        );
+        if (spot)
+          this.evidence.create('crate', spot.x, spot.y, this.tick, {
+            text: 'A supply crate. Batteries, cans. Nobody left it here. It is simply here.',
+          });
+      }
+    }
     // the maze reclaims its darkness
     if (now - this.lastLightSweepAt > 5000) {
       this.lastLightSweepAt = now;
@@ -252,6 +270,9 @@ export class World {
       interactUntil: 0,
       monsterVisible: false,
       deceiving: false,
+      battery: 100,
+      energy: 100,
+      fleeingUntil: 0,
       notable: 0,
       createdAt: now,
       lastSentX: NaN,
@@ -311,6 +332,7 @@ export class World {
     };
     agentRepo.upsert(row);
     this.bus.emit('agent_died', { agentId: a.id, name: a.name, cause, x: a.x, y: a.y });
+    void writeCaseFile(a, cause); // fire-and-forget: the archive writes itself
     this.pendingRemovals.push(a.id);
   }
 
@@ -509,6 +531,7 @@ export class World {
     a.notable += 1.5;
     a.attention = Math.min(100, a.attention + 3);
     a.lastActionResult = 'you sent your words out through the terminal';
+    this.bus.emit('terminal_post', { agentId: a.id, name: a.name, text });
   }
 
   addMemoryNote(a: AgentRuntime, note: string) {
@@ -594,6 +617,20 @@ export class World {
             });
         }
       }
+      // planted mysteries: rare anomalies the maze does not explain
+      if (rng() < 0.035) {
+        const s = spot();
+        const variant = pick(rng, ['phone', 'redlamp', 'elevator'] as const);
+        const texts: Record<string, string> = {
+          phone: 'An old rotary telephone. It is ringing. It has always been ringing.',
+          redlamp: 'A red lamp, burning steadily. Nobody wired it. Nothing feeds it.',
+          elevator: 'Elevator doors, polished clean. They open on request. Behind them: wall.',
+        };
+        this.evidence.create('anomaly', s.x, s.y, this.tick, {
+          text: texts[variant]!,
+          meta: { variant },
+        });
+      }
       // stray litter elsewhere
       if (rng() < 0.3) {
         const s = spot();
@@ -635,6 +672,8 @@ export class World {
       y: a.y,
       stress: a.stress,
       attention: a.attention,
+      battery: a.battery,
+      energy: a.energy,
       hue: a.hue,
       brain_mode: a.brainKind,
       created_at: a.createdAt,
@@ -692,6 +731,9 @@ export class World {
         interactUntil: 0,
         monsterVisible: false,
         deceiving: false,
+        battery: row.battery ?? 100,
+        energy: row.energy ?? 100,
+        fleeingUntil: 0,
         notable: 0,
         createdAt: row.created_at,
         lastSentX: NaN,

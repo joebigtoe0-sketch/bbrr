@@ -16,6 +16,10 @@ export const AgentSchema = z.object({
   state: z.enum(['idle', 'moving', 'interacting', 'dead']),
   stress: z.number(),
   attention: z.number(),
+  /** flashlight charge 0..100 - the beam dims as it dies */
+  battery: z.number(),
+  /** physical reserves 0..100 - exhausted agents slow down */
+  energy: z.number(),
   mindState: MindStateSchema,
   hue: z.number(), // 0..359, stable per agent, for client tinting
 });
@@ -40,6 +44,7 @@ export const EvidenceKindSchema = z.enum([
   'note',
   'printer',
   'crt',
+  'anomaly',
 ]);
 export type EvidenceKind = z.infer<typeof EvidenceKindSchema>;
 
@@ -79,6 +84,9 @@ export const WorldEventTypeSchema = z.enum([
   'map_expand',
   'agent_died',
   'agent_spawned',
+  'hunt_started',
+  'terminal_post',
+  'maze_tweet',
 ]);
 export type WorldEventType = z.infer<typeof WorldEventTypeSchema>;
 

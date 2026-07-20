@@ -29,7 +29,9 @@ export function renderAgentList(agents: Agent[], tunedId: string | null, cb: Sid
       <div class="name" style="color:${color}">${esc(a.name)} ${a.mindState === 'panicked' ? '⚠' : ''}${a.state === 'dead' ? '✝' : ''}</div>
       <div class="obj">${esc(OBJECTIVE_LABELS[a.objective])} · ${a.state}</div>
       <div class="bar stress"><div style="width:${a.stress}%"></div></div>
-      <div class="bar attention"><div style="width:${a.attention}%"></div></div>`;
+      <div class="bar attention"><div style="width:${a.attention}%"></div></div>
+      <div class="bar battery"><div style="width:${a.battery}%"></div></div>
+      <div class="bar energy"><div style="width:${a.energy}%"></div></div>`;
     row.onclick = () => cb.onAgentClick(a.id);
     list.appendChild(row);
   }
@@ -130,6 +132,97 @@ export function closeReader() {
 
 export function initReader() {
   $('reader-close').onclick = closeReader;
+}
+
+// ---------- right panel: LOG / TWEETS / RECORDS ----------
+type RightTab = 'log' | 'tweets' | 'records';
+let rightTab: RightTab | null = null;
+const logEntries: { t: string; text: string; cls: string }[] = [];
+
+export function initRightPanel() {
+  for (const tab of ['log', 'tweets', 'records'] as RightTab[]) {
+    $(`btn-${tab}`).onclick = () => toggleRightTab(tab);
+  }
+  $('right-close').onclick = () => {
+    rightTab = null;
+    $('right-panel').classList.remove('open');
+    syncPanelButtons();
+  };
+  setInterval(() => {
+    if (rightTab === 'tweets') void refreshTweets();
+    if (rightTab === 'records') void refreshRecords();
+  }, 25000);
+}
+
+function syncPanelButtons() {
+  for (const tab of ['log', 'tweets', 'records'] as RightTab[]) {
+    $(`btn-${tab}`).classList.toggle('active', rightTab === tab);
+  }
+}
+
+export function toggleRightTab(tab: RightTab) {
+  if (rightTab === tab) {
+    rightTab = null;
+    $('right-panel').classList.remove('open');
+  } else {
+    rightTab = tab;
+    $('right-panel').classList.add('open');
+    $('right-title').textContent = tab.toUpperCase();
+    renderRight();
+  }
+  syncPanelButtons();
+}
+
+function renderRight() {
+  if (rightTab === 'log') renderLog();
+  else if (rightTab === 'tweets') void refreshTweets();
+  else if (rightTab === 'records') void refreshRecords();
+}
+
+/** everything that happens in the maze, newest first */
+export function appendLog(text: string, cls = '') {
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  logEntries.unshift({ t, text, cls });
+  if (logEntries.length > 250) logEntries.pop();
+  if (rightTab === 'log') renderLog();
+}
+
+function renderLog() {
+  $('right-content').innerHTML = logEntries
+    .map((e) => `<div class="log-line ${e.cls}"><span class="t">${e.t}</span>${esc(e.text)}</div>`)
+    .join('');
+}
+
+export async function refreshTweets() {
+  try {
+    const res = await fetch('/api/tweets');
+    const data = await res.json();
+    if (rightTab !== 'tweets') return;
+    $('right-content').innerHTML = (data.tweets ?? [])
+      .map(
+        (tw: { text: string; kind: string; created_at: number }) =>
+          `<div class="tweet-card">${esc(tw.text)}<div class="meta">@the_backrooms · ${tw.kind} · ${new Date(tw.created_at).toLocaleTimeString([], { hour12: false })}</div></div>`,
+      )
+      .join('') || '<div class="log-line">the maze has said nothing yet.</div>';
+  } catch {
+    // server restarting
+  }
+}
+
+export async function refreshRecords() {
+  try {
+    const res = await fetch('/api/records');
+    const data = await res.json();
+    if (rightTab !== 'records') return;
+    $('right-content').innerHTML = (data.records ?? [])
+      .map((r: { name: string; objective: string; story: string; born_at: number; died_at: number; cause: string | null }) => {
+        const mins = Math.max(1, Math.round((r.died_at - r.born_at) / 60000));
+        return `<div class="record-card"><div class="rname">CASE FILE // ${esc(r.name)}</div><div class="rmeta">${esc(r.objective)} · survived ${mins} min · ${esc(r.cause ?? 'unknown')}</div>${esc(r.story)}</div>`;
+      })
+      .join('') || '<div class="log-line">no case files yet. the maze is patient.</div>';
+  } catch {
+    // server restarting
+  }
 }
 
 // ---------- tune-in overlay ----------

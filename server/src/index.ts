@@ -7,17 +7,20 @@ import { config } from './config.js';
 setDefaultAutoSelectFamily(true);
 import { World } from './sim/world.js';
 import { BrainScheduler } from './brain/scheduler.js';
+import { MazeVoice } from './brain/mazeVoice.js';
 import { WsHub } from './net/wsHub.js';
 import { buildRest } from './net/rest.js';
 
 const world = new World();
 const scheduler = new BrainScheduler(world);
+const voice = new MazeVoice(world);
 const app = buildRest(world, scheduler);
 const server = http.createServer(app);
 new WsHub(server, world);
 
 world.start();
 scheduler.start();
+voice.start();
 
 server.listen(config.PORT, () => {
   console.log(`[server] http+ws listening on :${config.PORT} (brains: ${config.BRAIN_MODE})`);
@@ -29,6 +32,7 @@ function shutdown() {
   shuttingDown = true;
   console.log('[server] shutting down...');
   scheduler.stop();
+  voice.stop();
   world.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();

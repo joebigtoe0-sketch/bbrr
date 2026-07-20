@@ -42,6 +42,10 @@ export interface AgentRuntime {
   interactUntil: number;
   monsterVisible: boolean;
   deceiving: boolean;
+  battery: number;
+  energy: number;
+  /** set while the hunt-flee reflex is steering (epoch ms it expires) */
+  fleeingUntil: number;
   /** rolling score of notable actions, feeds the simulated-social viral rolls */
   notable: number;
   createdAt: number;
@@ -65,6 +69,8 @@ export function toWireAgent(a: AgentRuntime): Agent {
     state: a.state,
     stress: Math.round(a.stress),
     attention: Math.round(a.attention),
+    battery: Math.round(a.battery),
+    energy: Math.round(a.energy),
     mindState: a.mindState,
     hue: a.hue,
   };
@@ -308,8 +314,10 @@ function doSearch(world: World, a: AgentRuntime) {
   if (crate) {
     world.evidence.remove(crate.id, crate.x, crate.y);
     a.stress = Math.max(0, a.stress - 25);
-    world.addMemoryNote(a, 'You found a supply crate. It helped.');
-    a.lastActionResult = 'you opened a supply crate and feel steadier';
+    a.battery = Math.min(100, a.battery + 45);
+    a.energy = Math.min(100, a.energy + 35);
+    world.addMemoryNote(a, 'You found a supply crate: batteries and food. It helped.');
+    a.lastActionResult = 'you opened a supply crate: fresh batteries, something to eat';
     return;
   }
   // read the nearest readable artifact — this is how misinformation spreads
@@ -384,9 +392,31 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
     }
   }
 
+  // hunt-flee reflex: seeing the thing mid-hunt overrides whatever the
+  // brain was doing - they RUN, immediately, no 15s decision wait
+  const m = world.monsterRt;
+  if (
+    a.monsterVisible &&
+    m.mode === 'hunt' &&
+    m.targetAgentId === a.id &&
+    now >= a.fleeingUntil - 3500 // re-steer at most every ~0.5s while fleeing
+  ) {
+    a.fleeingUntil = now + 4000;
+    const dx = a.x - m.x;
+    const dy = a.y - m.y;
+    const len = Math.max(0.01, Math.hypot(dx, dy));
+    startPath(world, a, Math.round(a.x + (dx / len) * 14), Math.round(a.y + (dy / len) * 14));
+    a.lastActionResult = 'you ran from it';
+  }
+
   // movement
   if (a.state === 'moving' && a.path) {
-    let remaining = AGENT_SPEED * dt;
+    const fleeing = now < a.fleeingUntil;
+    let speed = AGENT_SPEED * (fleeing ? 1.35 : 1); // adrenaline sprint
+    if (a.energy < 20) speed *= 0.7; // running on empty
+    if (a.energy <= 0) speed *= 0.7;
+    if (fleeing) a.energy = Math.max(0, a.energy - 2.5 * dt); // sprint burns reserves
+    let remaining = speed * dt;
     while (remaining > 0 && a.path && a.pathIdx < a.path.length) {
       const wp = a.path[a.pathIdx]!;
       const txc = wp.x + 0.5;
@@ -434,6 +464,16 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
   const resting = a.restUntil > now;
   if (!a.monsterVisible && a.stress > 10) dStress -= (resting ? 2 : 1) * dt;
   a.stress = Math.max(0, Math.min(100, a.stress + dStress));
+
+  // battery: the flashlight is life. drains ~20min; recharges in powered
+  // sectors. energy: reserves; rest recovers, sprinting burns.
+  const inPoweredChunk = chunk?.lightsOn === true;
+  if (inPoweredChunk) a.battery = Math.min(100, a.battery + 6 * dt);
+  else a.battery = Math.max(0, a.battery - (100 / 1200) * dt);
+  a.energy = Math.max(0, a.energy - (100 / 2400) * dt);
+  if (resting) a.energy = Math.min(100, a.energy + 2.5 * dt);
+  if (a.battery <= 12 && !inPoweredChunk) a.stress = Math.min(100, a.stress + 0.35 * dt);
+  if (a.energy <= 10) a.stress = Math.min(100, a.stress + 0.2 * dt);
 
   // attention decays slowly
   a.attention = Math.max(0, a.attention - 0.02 * dt);

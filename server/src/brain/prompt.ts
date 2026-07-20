@@ -31,6 +31,7 @@ WHAT YOU KNOW:
 - The rooms go on far beyond what you have seen. There are others in here.
 - Something enormous also lives here. If you see it, run.
 - There are old terminals and printers. Words you feed them go... somewhere outside. Sometimes afterward, you feel attention from outside this place — and when you do, lights come on and doors change.
+- Your flashlight runs on batteries and they DRAIN. Supply crates hold batteries and food. Powered, lit sectors recharge your flashlight. If your light dies, the dark has you.
 - Writing on walls stays. What people leave behind here is permanent.
 
 HARD RULES:
@@ -54,7 +55,7 @@ ACTION is one of:
 export function userPrompt(obs: Observation): string {
   const lines: string[] = [];
   lines.push(
-    `STATUS: ${obs.stressWord}. ${obs.attentionWord}. You have been walking these rooms for ${obs.aliveMinutes} minutes.`,
+    `STATUS: ${obs.stressWord}. ${obs.attentionWord}. ${obs.batteryWord}. ${obs.energyWord}. You have been walking these rooms for ${obs.aliveMinutes} minutes.`,
   );
   lines.push(`LOCATION: ${obs.locationLine}`);
   if (obs.visibleEvidence.length > 0) lines.push(`YOU SEE: ${obs.visibleEvidence.join('; ')}.`);

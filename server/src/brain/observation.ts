@@ -11,6 +11,20 @@ function stressWord(s: number): string {
   return 'you feel almost calm';
 }
 
+function batteryWord(b: number): string {
+  if (b <= 0) return 'your flashlight is DEAD. the dark is total';
+  if (b < 15) return 'your flashlight is dying - the beam is brown and guttering';
+  if (b < 40) return 'your flashlight is weakening';
+  return 'your flashlight is steady';
+}
+
+function energyWord(e: number): string {
+  if (e <= 0) return 'you are utterly spent; walking is like wading';
+  if (e < 20) return 'your legs are heavy; you need food and rest';
+  if (e < 50) return 'you are getting tired and hungry';
+  return 'your body is holding up';
+}
+
 function attentionWord(att: number): string {
   if (att > 60) return 'the pressure of outside attention is intense right now';
   if (att > 25) return 'you can feel attention from outside this place, faint but real';
@@ -82,6 +96,9 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
       case 'corpse':
         visibleEvidence.push(`a body on the floor: ${e.text ?? 'unrecognizable'}`);
         break;
+      case 'anomaly':
+        if (e.text) visibleEvidence.push(`something wrong ${d} steps away: ${e.text}`);
+        break;
       case 'graffiti':
       case 'note':
       case 'sign':
@@ -111,6 +128,8 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
     stress: Math.round(a.stress),
     stressWord: stressWord(a.stress),
     attentionWord: attentionWord(a.attention),
+    batteryWord: batteryWord(a.battery),
+    energyWord: energyWord(a.energy),
     aliveMinutes: Math.floor((Date.now() - a.spawnedAtMs) / 60000),
     locationLine,
     visibleEvidence,

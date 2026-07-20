@@ -6,7 +6,7 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db/db.js';
 import { AdminDebugBody, AdminEventBody, SpawnAgentBody } from '@backrooms/shared';
 import { config, isDev } from '../config.js';
-import { agentRepo } from '../db/repo.js';
+import { agentRepo, caseFileRepo, tweetRepo } from '../db/repo.js';
 import type { World } from '../sim/world.js';
 import type { BrainScheduler } from '../brain/scheduler.js';
 
@@ -87,6 +87,14 @@ export function buildRest(world: World, scheduler: BrainScheduler): Express {
     }
     const event = world.bus.emit(type, finalPayload);
     res.json({ ok: true, eventId: event.id });
+  });
+
+  app.get('/api/tweets', (_req, res) => {
+    res.json({ tweets: tweetRepo.latest(50) });
+  });
+
+  app.get('/api/records', (_req, res) => {
+    res.json({ records: caseFileRepo.latest(30) });
   });
 
   // FULL RESET: wipe the world file and exit — the process supervisor

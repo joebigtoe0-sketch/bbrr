@@ -106,6 +106,7 @@ export function tickMonster(world: World, dtMs: number, now: number) {
         m.targetAgentId = a.id;
         m.huntLostSightAt = now;
         m.repathAt = 0;
+        world.bus.emit('hunt_started', { agentId: a.id, name: a.name });
         break;
       }
     }

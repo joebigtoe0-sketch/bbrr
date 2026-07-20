@@ -7,6 +7,8 @@ export interface Observation {
   stress: number;
   stressWord: string;
   attentionWord: string;
+  batteryWord: string;
+  energyWord: string;
   aliveMinutes: number;
   locationLine: string; // "open room, lights flickering. Ways on: north (dark corridor), east (lit doorway)."
   visibleEvidence: string[]; // up to 5 human-readable lines
