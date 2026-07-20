@@ -1,0 +1,15 @@
+# Deterministic build plan for Railway/Nixpacks — one service from the repo
+# root. Do NOT let Railway split the workspaces into per-package services;
+# the server serves the built client, so a single service runs everything.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

@@ -46,17 +46,24 @@ spectator-aware throttling (empty room → slow thoughts), daily budget breaker.
 
 ## Deploy (Railway)
 
-One service runs everything: the server simulates the world and serves the
-built client on the same port.
+**ONE service runs everything**: the server simulates the world and serves the
+built client on the same port. Railway will try to auto-split the npm
+workspaces into separate `@backrooms/server` / `@backrooms/client` services —
+**don't let it** (they cannot build in isolation and it's not the design).
 
-1. Push this repo to GitHub, create a Railway project **from the repo** —
-   `railway.json` supplies the build (`npm ci && npm run build`) and start
-   (`npm run start`) commands; Railway's `PORT` is picked up automatically.
+1. If Railway already created split services: **delete them**. Add a single
+   service: *New → GitHub Repo → bbrr*, and make sure its
+   **Settings → Root Directory** is `/` (the repo root). The included
+   `railway.json` + `nixpacks.toml` then drive the build
+   (`npm ci && npm run build`) and start (`npm run start`); Railway's `PORT`
+   is picked up automatically.
 2. **Variables**: copy what you need from `.env.example`. Minimum for real
    brains: `OPENAI_API_KEY`, `BRAIN_MODE=openai`. Set a real `ADMIN_PASSWORD`.
-3. **Persistence** (important): Railway's filesystem is wiped on redeploy.
-   Attach a **Volume** (e.g. mounted at `/data`) and set
-   `DB_PATH=/data/backrooms.db` — otherwise the world archive resets on
+3. **Persistence** (important): there is NO external database — the world is
+   a single SQLite file. Railway's filesystem is wiped on redeploy, so attach
+   a **Volume** to the service (right-click the service → *Attach Volume*),
+   set its **mount path** to `/data`, and add the variable
+   `DB_PATH=/data/backrooms.db`. Without this the world archive resets on
    every deploy.
 4. Open the public URL; `/admin.html` is the control room; `/api/health`
    shows tick, population, and LLM spend.
