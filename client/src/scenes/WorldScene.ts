@@ -41,6 +41,8 @@ interface AgentView {
    * wall planes.
    */
   queue: { x: number; y: number }[];
+  /** smoothed flashlight beam angle (radians, screen space) */
+  beamAngle: number;
 }
 
 /** a text drifting upward until it leaves the top of the screen */
@@ -50,8 +52,17 @@ interface Floater {
   born: number;
 }
 
-const DARK_TINT = 0x55566a;
 const FLOATER_DEPTH = 5_000_000;
+const DARKNESS_DEPTH = 1_000_000;
+const BLIP_DEPTH = 1_100_000;
+
+/** screen-space beam angles for the four facings (iso axes) */
+const FACING_ANGLE: Record<string, number> = {
+  e: Math.atan2(16, 32),
+  s: Math.atan2(16, -32),
+  n: Math.atan2(-16, 32),
+  w: Math.atan2(-16, -32),
+};
 
 /**
  * On-screen height (world px, pre-zoom) for real loaded art. The generated PNGs
@@ -90,8 +101,13 @@ export class WorldScene extends Phaser.Scene {
   private fadedWalls = new Set<string>();
   private floaters: Floater[] = [];
   private monsterTrail = { gx: 0, gy: 0, queue: [] as { x: number; y: number }[] };
-  /** chunk views needing a rebuild because a neighbor arrived or relit */
-  private rebuildQueue = new Set<string>();
+  private darkRT!: Phaser.GameObjects.RenderTexture;
+  private eraserCone!: Phaser.GameObjects.Image;
+  private eraserPool!: Phaser.GameObjects.Image;
+  private eraserChunk!: Phaser.GameObjects.Image;
+  private monsterEyes!: Phaser.GameObjects.Image;
+  /** per-chunk powered-light intensity, tweened on power events */
+  private power = new Map<string, { v: number }>();
   /** wall keys to keep translucent because evidence sits right behind them */
   private evidenceFadeKeys = new Set<string>();
   private evidenceFadeDirty = true;
@@ -107,8 +123,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#0a0a08');
-    this.cameras.main.setZoom(1.3);
+    this.cameras.main.setBackgroundColor('#050503');
+    this.cameras.main.setZoom(1.8);
+
+    // the darkness: a screen-space veil that light sources erase holes into
+    this.darkRT = this.add
+      .renderTexture(0, 0, this.scale.width, this.scale.height)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(DARKNESS_DEPTH);
+    this.scale.on('resize', (s: Phaser.Structs.Size) => this.darkRT.resize(s.width, s.height));
+    this.eraserCone = this.add.image(0, 0, 'flashCone').setOrigin(0.02, 0.5).setVisible(false);
+    this.eraserPool = this.add.image(0, 0, 'flashPool').setOrigin(0.5).setVisible(false);
+    this.eraserChunk = this.add.image(0, 0, 'chunkLight').setOrigin(0.5).setVisible(false);
+    this.monsterEyes = this.add.image(0, 0, 'eyes').setDepth(BLIP_DEPTH).setVisible(false);
 
     this.monsterView = this.add
       .image(0, 0, 'monster')
@@ -154,16 +182,10 @@ export class WorldScene extends Phaser.Scene {
         this.cameras.main.centerOn(p.sx, p.sy);
       }
     };
-    s.onChunk = (c) => {
-      this.buildChunkView(c);
-      this.queueNeighborRebuilds(c.cx, c.cy);
-    };
+    s.onChunk = (c) => this.buildChunkView(c);
     s.onChunkChanged = (key) => {
       const c = s.chunks.get(key);
-      if (c) {
-        this.buildChunkView(c);
-        this.queueNeighborRebuilds(c.cx, c.cy);
-      }
+      if (c) this.buildChunkView(c);
     };
     s.onAgent = (a) => {
       this.upsertAgent(a);
@@ -191,7 +213,7 @@ export class WorldScene extends Phaser.Scene {
       this.evidenceViews.delete(id);
       this.evidenceFadeDirty = true;
     };
-    s.onLight = (cx, cy, on) => this.flickerChunk(cx, cy, on);
+    s.onLight = (cx, cy, on) => this.onLightChange(cx, cy, on);
     s.onWorldEvent = (e) => this.handleWorldEvent(e);
     s.onSpeech = (agentId, text) => this.showSpeech(agentId, text);
     s.onThought = (t) => this.showThought(t);
@@ -199,51 +221,21 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------------- chunk rendering ----------------
 
-  private queueNeighborRebuilds(cx: number, cy: number) {
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const key = chunkKey(cx + dx, cy + dy);
-      if (this.chunkViews.has(key)) this.rebuildQueue.add(key);
+  private powerOf(key: string, lightsOn: boolean): { v: number } {
+    let rec = this.power.get(key);
+    if (!rec) {
+      rec = { v: lightsOn ? 1 : 0 };
+      this.power.set(key, rec);
     }
+    return rec;
   }
 
-  private chunkLight(cx: number, cy: number): number | null {
-    const c = this.store.chunks.get(chunkKey(cx, cy));
-    return c ? (c.lightsOn ? 1 : 0) : null;
-  }
-
-  /**
-   * Per-tile brightness: bilinear blend of the four nearest chunks' light
-   * states, so lit and dark sectors fade into each other instead of meeting
-   * at a hard chunk-diamond edge. Coordinates are float tile positions.
-   */
-  private brightnessAt(tx: number, ty: number): number {
-    const fx = tx / CHUNK_SIZE - 0.5;
-    const fy = ty / CHUNK_SIZE - 0.5;
-    const c0x = Math.floor(fx);
-    const c0y = Math.floor(fy);
-    const wx = fx - c0x;
-    const wy = fy - c0y;
-    const own = this.chunkLight(tileToChunk(Math.floor(tx)), tileToChunk(Math.floor(ty)));
-    const s = (cx: number, cy: number) => this.chunkLight(cx, cy) ?? own ?? 1;
-    return (
-      s(c0x, c0y) * (1 - wx) * (1 - wy) +
-      s(c0x + 1, c0y) * wx * (1 - wy) +
-      s(c0x, c0y + 1) * (1 - wx) * wy +
-      s(c0x + 1, c0y + 1) * wx * wy
-    );
-  }
-
-  private tintFor(b: number): number {
-    const t = Math.max(0, Math.min(1, b));
-    const r = Math.round(0x55 + (0xff - 0x55) * t);
-    const g = Math.round(0x56 + (0xff - 0x56) * t);
-    const bl = Math.round(0x6a + (0xff - 0x6a) * t);
-    return (r << 16) | (g << 8) | bl;
+  private onLightChange(cx: number, cy: number, on: boolean) {
+    const key = chunkKey(cx, cy);
+    const rec = this.powerOf(key, !on); // ensure record exists at previous state
+    this.tweens.add({ targets: rec, v: on ? 1 : 0, duration: 900, ease: 'Sine.easeInOut' });
+    const c = this.store.chunks.get(key);
+    if (c) this.buildChunkView(c); // swap fixture bar textures + glows
   }
 
   private buildChunkView(c: MazeChunk) {
@@ -267,6 +259,7 @@ export class WorldScene extends Phaser.Scene {
     const rtH = (2 * S - 1) * 16 + 32;
 
     const rt = this.add.renderTexture(rtX, rtY, rtW, rtH).setOrigin(0, 0).setDepth(FLOOR_DEPTH);
+    this.powerOf(key, c.lightsOn);
     const sprites: Phaser.GameObjects.GameObject[] = [];
     const wallKeys: string[] = [];
 
@@ -279,17 +272,15 @@ export class WorldScene extends Phaser.Scene {
         const gy = origin.gy + ly;
         const p = gridToScreen(gx, gy);
 
-        // carpet everywhere, lit per tile so light fades across sector borders
-        const tileTint = this.tintFor(this.brightnessAt(gx + 0.5, gy + 0.5));
+        // carpet everywhere — the darkness overlay owns all lighting now
         const floorKey = (gx + gy) % 2 === 0 ? 'floor0' : 'floor1';
-        rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16, 1, tileTint);
+        rt.draw(floorKey, p.sx - rtX - 32, p.sy - rtY - 16);
         if (t === TILE.Rubble) {
           const img = scaleArt(
             this.add
               .image(p.sx, p.sy, 'rubble')
               .setOrigin(0.5, 0.6)
-              .setDepth(depthOf(gx + 0.5, gy + 0.5, -4))
-              .setTint(tileTint),
+              .setDepth(depthOf(gx + 0.5, gy + 0.5, -4)),
           );
           sprites.push(img);
         }
@@ -301,8 +292,7 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(0, 1)
-            .setDepth(depthOf(gx + 0.5, gy, 0))
-            .setTint(this.tintFor(this.brightnessAt(gx + 0.5, gy)));
+            .setDepth(depthOf(gx + 0.5, gy, 0));
           sprites.push(img);
           const wk = `h:${gx},${gy}`;
           this.wallIndex.set(wk, [img]);
@@ -314,8 +304,7 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(1, 1)
-            .setDepth(depthOf(gx, gy + 0.5, 0))
-            .setTint(this.tintFor(this.brightnessAt(gx, gy + 0.5)));
+            .setDepth(depthOf(gx, gy + 0.5, 0));
           sprites.push(img);
           const wk = `v:${gx},${gy}`;
           this.wallIndex.set(wk, [img]);
@@ -326,13 +315,12 @@ export class WorldScene extends Phaser.Scene {
         // (proper modulo: JS % is negative for negative coords, which used to
         // erase every fixture west/north of the origin)
         if (t === TILE.Floor && (((gx % 6) + 6) % 6) === 2 && (((gy % 6) + 6) % 6) === 3) {
-          const b = this.brightnessAt(gx + 0.5, gy + 0.5);
           const bar = scaleArt(
             this.add
               .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
               .setDepth(depthOf(gx + 0.5, gy + 0.5, 20))
               // both states share one image; a cold dark tint sells "dead tubes"
-              .setTint(c.lightsOn ? this.tintFor(Math.max(0.35, b)) : 0x3f4450),
+              .setTint(c.lightsOn ? 0xffffff : 0x3f4450),
           );
           sprites.push(bar);
           if (c.lightsOn) {
@@ -340,7 +328,7 @@ export class WorldScene extends Phaser.Scene {
               .image(p.sx, p.sy, 'glow')
               .setBlendMode(Phaser.BlendModes.ADD)
               .setScale(2.2, 1.4)
-              .setAlpha(Math.max(0.2, b))
+              .setAlpha(0.8)
               .setDepth(depthOf(gx + 0.5, gy + 0.5, -6));
             sprites.push(glow);
           }
@@ -348,30 +336,6 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     this.chunkViews.set(key, { rt, sprites, wallKeys, version: c.version });
-  }
-
-  private flickerChunk(cx: number, cy: number, on: boolean) {
-    const c = this.store.chunks.get(chunkKey(cx, cy));
-    if (!c) return;
-    // rebuild with new light state after a flicker
-    let count = 0;
-    const timer = this.time.addEvent({
-      delay: 70,
-      repeat: 5,
-      callback: () => {
-        count++;
-        const view = this.chunkViews.get(chunkKey(cx, cy));
-        if (view) {
-          const tint = count % 2 === 0 ? 0xffffff : DARK_TINT;
-          view.rt.setTint(tint);
-        }
-        if (count > 5) {
-          timer.destroy();
-          this.buildChunkView(c);
-          this.queueNeighborRebuilds(cx, cy); // light gradient bleeds into neighbors
-        }
-      },
-    });
   }
 
   // ---------------- evidence rendering ----------------
@@ -390,31 +354,36 @@ export class WorldScene extends Phaser.Scene {
 
     switch (e.kind) {
       case 'graffiti': {
-        const short = (e.text ?? '').slice(0, 16) + ((e.text?.length ?? 0) > 16 ? '…' : '');
-        const txt = this.add
-          .text(p.sx, p.sy - 20, short, {
-            fontFamily: 'Consolas, monospace',
-            fontSize: '11px',
-            color: '#c23b2e',
-            stroke: '#1a0a08',
-            strokeThickness: 2,
-          })
-          .setOrigin(0.5)
-          .setAngle(-12)
-          .setDepth(eDepth(-2));
-        interactive(txt, () =>
+        const img = this.makeGraffiti(e);
+        img.setDepth(eDepth(-3));
+        interactive(img, () =>
           openReader('GRAFFITI', [
             `"${e.text ?? ''}"`,
             e.authorName ? `— scratched by ${e.authorName}` : '— author unknown',
           ]),
         );
-        objs.push(txt);
+        objs.push(img);
         break;
       }
       case 'crt': {
         const img = scaleArt(
           this.add.image(p.sx, p.sy + 6, 'crt').setOrigin(0.5, 1).setDepth(eDepth()),
         );
+        // tiny LED that blinks through the darkness so watchers can find it
+        const led = this.add
+          .image(p.sx + 5, p.sy - 20, 'blip')
+          .setDepth(BLIP_DEPTH)
+          .setAlpha(0.2);
+        this.tweens.add({
+          targets: led,
+          alpha: 1,
+          duration: 650,
+          yoyo: true,
+          repeat: -1,
+          delay: Math.random() * 1200,
+          hold: 120,
+        });
+        objs.push(led);
         interactive(img, () => {
           const lines = (e.meta?.lines as string[] | undefined) ?? [];
           openReader(
@@ -510,6 +479,87 @@ export class WorldScene extends Phaser.Scene {
     this.evidenceViews.set(e.id, objs);
   }
 
+  /**
+   * Render graffiti as spray paint PROJECTED onto the world: sheared onto a
+   * neighboring wall plane when one exists, otherwise laid flat along the
+   * isometric floor. One canvas texture per artifact.
+   */
+  private makeGraffiti(e: EvidenceArtifact): Phaser.GameObjects.Image {
+    const key = `graf:${e.id}`;
+    if (this.textures.exists(key)) this.textures.remove(key);
+    const text = (e.text ?? '').slice(0, 42);
+    const font = '13px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
+
+    // measure roughly
+    const probe = document.createElement('canvas').getContext('2d')!;
+    probe.font = font;
+    const tw = Math.min(210, Math.ceil(probe.measureText(text).width) + 8);
+
+    // wall behind the tile? paint it there; else on the carpet
+    const c = this.store.chunks.get(chunkKey(tileToChunk(e.x), tileToChunk(e.y)));
+    const li = (((e.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE) * CHUNK_SIZE +
+      (((e.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE);
+    const onWallH = c && c.wallsH[li] === EDGE.Wall;
+    const onWallV = !onWallH && c && c.wallsV[li] === EDGE.Wall;
+
+    const spray = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+      ctx.font = font;
+      ctx.textBaseline = 'middle';
+      // soft overspray halo, then the strokes
+      ctx.globalAlpha = 0.28;
+      for (const [ox, oy] of [[-1.5, 0], [1.5, 0.8], [0, -1.4], [0.8, 1.2]]) {
+        ctx.fillText(text, x + ox, y + oy);
+      }
+      ctx.globalAlpha = 0.92;
+      ctx.fillText(text, x, y);
+      // drips
+      ctx.globalAlpha = 0.5;
+      for (let i = 0; i < 3; i++) {
+        const dx = x + 6 + ((i * 53) % Math.max(20, tw - 10));
+        ctx.fillRect(dx, y + 6, 1.2, 4 + ((i * 29) % 7));
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    if (onWallH || onWallV) {
+      // upright on the wall plane, sheared to its slope
+      const W = Math.min(tw + 8, 96);
+      const H = 16 + WALL_H + Math.ceil(W / 2);
+      const tex = this.textures.createCanvas(key, W, H)!;
+      const ctx = tex.getContext();
+      const slope = onWallH ? 0.5 : -0.5;
+      const y0 = onWallH ? 16 : 16 + W / 2;
+      ctx.setTransform(1, slope, 0, 1, 0, y0);
+      ctx.fillStyle = '#b3312e';
+      ctx.save();
+      ctx.scale(Math.min(1, (W - 6) / tw), 1);
+      spray(ctx, 3, WALL_H / 2 + 2);
+      ctx.restore();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      tex.refresh();
+      // anchor exactly like the wall planes: H edges origin(0,1), V edges origin(1,1)
+      const img = this.add.image(0, 0, key).setOrigin(onWallH ? 0 : 1, 1);
+      const gp = gridToScreen(Math.floor(e.x), Math.floor(e.y));
+      img.setPosition(gp.sx, gp.sy);
+      return img;
+    }
+
+    // floor: project along the iso ground plane
+    const W = tw + 20;
+    const H = Math.ceil(W * 0.62) + 16;
+    const tex = this.textures.createCanvas(key, W, H)!;
+    const ctx = tex.getContext();
+    ctx.setTransform(0.9, 0.45, -0.55, 0.34, W / 2, H / 2 - 4);
+    ctx.fillStyle = '#c23b2e';
+    spray(ctx, -tw / 2, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    tex.refresh();
+    const img = this.add.image(0, 0, key).setOrigin(0.5, 0.5);
+    const pp = entityToScreen(e.x + 0.5, e.y + 0.5);
+    img.setPosition(pp.sx, pp.sy);
+    return img;
+  }
+
   // ---------------- agents / monster / chaos ----------------
 
   private upsertAgent(a: Agent) {
@@ -534,7 +584,7 @@ export class WorldScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5);
-      v = { sprite, label, gx: a.x, gy: a.y, queue: [] };
+      v = { sprite, label, gx: a.x, gy: a.y, queue: [], beamAngle: FACING_ANGLE.s! };
       this.agentViews.set(a.id, v);
     }
     const last = v.queue[v.queue.length - 1];
@@ -752,7 +802,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.on(
       'wheel',
       (_p: unknown, _o: unknown, _dx: number, dy: number) => {
-        const z = Phaser.Math.Clamp(cam.zoom * (dy > 0 ? 0.9 : 1.1), 0.4, 2.2);
+        const z = Phaser.Math.Clamp(cam.zoom * (dy > 0 ? 0.9 : 1.1), 0.8, 3.4);
         cam.setZoom(z);
       },
     );
@@ -821,6 +871,13 @@ export class WorldScene extends Phaser.Scene {
       if (a && a.mindState === 'panicked' && a.state !== 'dead') {
         v.sprite.x += (Math.random() - 0.5) * 1.2;
       }
+      if (a) {
+        const target = FACING_ANGLE[a.facing] ?? v.beamAngle;
+        let diff = target - v.beamAngle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        v.beamAngle += diff * Math.min(1, dt * 0.01);
+      }
     }
 
     // monster: same trail-following, plus its unsettling jitter
@@ -832,6 +889,11 @@ export class WorldScene extends Phaser.Scene {
         .setPosition(p.sx + (Math.random() - 0.5) * 2, p.sy + 12 + (Math.random() - 0.5) * 1.5)
         .setDepth(depthOf(t.gx, t.gy, 2));
       this.monsterView.setVisible(true);
+      // its eyes burn through the darkness even when the body is unseen
+      this.monsterEyes
+        .setPosition(p.sx - 3, p.sy - 60)
+        .setVisible(Math.random() > 0.04)
+        .setAlpha(0.75 + Math.random() * 0.25);
     }
     // chaos flicker
     if (this.chaosView.visible) {
@@ -846,6 +908,44 @@ export class WorldScene extends Phaser.Scene {
         const target = gridToScreen(v.gx, v.gy);
         cam.scrollX += (target.sx - cam.width / 2 / 1 - cam.scrollX) * 0.06;
         cam.scrollY += (target.sy - cam.height / 2 / 1 - cam.scrollY) * 0.06;
+      }
+    }
+
+    // ---- the darkness: repaint the veil, then carve light out of it ----
+    {
+      const cam = this.cameras.main;
+      const view = cam.worldView;
+      const z = cam.zoom;
+      const toScreen = (wx: number, wy: number) => ({
+        x: (wx - view.x) * z,
+        y: (wy - view.y) * z,
+      });
+      this.darkRT.clear();
+      this.darkRT.fill(0x030304, 0.93);
+      // powered sectors
+      for (const [key, rec] of this.power) {
+        if (rec.v <= 0.02) continue;
+        const [cx, cy] = key.split(',').map(Number);
+        const center = gridToScreen(cx! * CHUNK_SIZE + 8, cy! * CHUNK_SIZE + 8);
+        const s = toScreen(center.sx, center.sy);
+        if (s.x < -900 * z || s.x > this.scale.width + 900 * z) continue;
+        if (s.y < -600 * z || s.y > this.scale.height + 600 * z) continue;
+        this.eraserChunk.setScale(2.4 * z).setAlpha(rec.v);
+        this.darkRT.erase(this.eraserChunk, s.x, s.y);
+      }
+      // flashlights: a cone in the facing direction plus a personal pool
+      for (const v of this.agentViews.values()) {
+        const s = toScreen(v.sprite.x, v.sprite.y - 12);
+        this.eraserPool.setScale(0.9 * z).setAlpha(0.95);
+        this.darkRT.erase(this.eraserPool, s.x, s.y);
+        this.eraserCone.setRotation(v.beamAngle).setScale(1.05 * z).setAlpha(0.92);
+        this.darkRT.erase(this.eraserCone, s.x, s.y);
+      }
+      // the chaos thing glows faintly when it manifests
+      if (this.chaosView.visible) {
+        const s = toScreen(this.chaosView.x, this.chaosView.y - 16);
+        this.eraserPool.setScale(0.55 * z).setAlpha(0.55);
+        this.darkRT.erase(this.eraserPool, s.x, s.y);
       }
     }
 
@@ -897,15 +997,6 @@ export class WorldScene extends Phaser.Scene {
         }
       }
       this.fadedWalls = fade;
-    }
-
-    // rebuild chunks whose lighting context changed (neighbor arrived/relit)
-    if (this.rebuildQueue.size > 0) {
-      for (const key of this.rebuildQueue) {
-        const c = this.store.chunks.get(key);
-        if (c && this.chunkViews.has(key)) this.buildChunkView(c);
-      }
-      this.rebuildQueue.clear();
     }
 
     // chunk subscriptions follow the camera

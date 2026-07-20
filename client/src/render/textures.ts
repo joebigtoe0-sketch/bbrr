@@ -10,6 +10,98 @@ import { TILE_W, TILE_H, WALL_H, WALL_TEX_W, WALL_TEX_H } from './iso.js';
  * 0 (wall top) .. WALL_H (ground). H edges rise to the right (slope +0.5),
  * V edges fall (slope -0.5).
  */
+/**
+ * Light-mask textures for the darkness overlay. These are ERASE stamps:
+ * their alpha is how much darkness they remove.
+ */
+export function generateLightingTextures(scene: Phaser.Scene) {
+  // flashlight cone pointing +X, origin at (0, mid)
+  {
+    const W = 260;
+    const H = 170;
+    const tex = scene.textures.createCanvas('flashCone', W, H);
+    if (tex) {
+      const ctx = tex.getContext();
+      ctx.beginPath();
+      ctx.moveTo(2, H / 2);
+      ctx.arc(2, H / 2, W - 8, -0.42, 0.42);
+      ctx.closePath();
+      ctx.clip();
+      const g = ctx.createRadialGradient(2, H / 2, 8, 2, H / 2, W - 8);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.55, 'rgba(255,255,255,0.75)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      tex.refresh();
+    }
+  }
+  // personal glow pool around a light carrier
+  {
+    const S = 150;
+    const tex = scene.textures.createCanvas('flashPool', S, S);
+    if (tex) {
+      const ctx = tex.getContext();
+      const g = ctx.createRadialGradient(S / 2, S / 2, 4, S / 2, S / 2, S / 2);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      tex.refresh();
+    }
+  }
+  // powered-sector glow (soft ellipse, stamped over lit chunks)
+  {
+    const W = 512;
+    const H = 288;
+    const tex = scene.textures.createCanvas('chunkLight', W, H);
+    if (tex) {
+      const ctx = tex.getContext();
+      const g = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W / 2);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.6, 'rgba(255,255,255,0.9)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.save();
+      ctx.scale(1, H / W);
+      ctx.fillRect(0, 0, W, W);
+      ctx.restore();
+      tex.refresh();
+    }
+  }
+  // terminal LED blip (green, visible through darkness)
+  {
+    const tex = scene.textures.createCanvas('blip', 10, 10);
+    if (tex) {
+      const ctx = tex.getContext();
+      const g = ctx.createRadialGradient(5, 5, 0.5, 5, 5, 5);
+      g.addColorStop(0, 'rgba(120,255,150,1)');
+      g.addColorStop(0.4, 'rgba(60,220,110,0.8)');
+      g.addColorStop(1, 'rgba(40,200,90,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 10, 10);
+      tex.refresh();
+    }
+  }
+  // the monster's eyes never stop being visible
+  {
+    const tex = scene.textures.createCanvas('eyes', 14, 6);
+    if (tex) {
+      const ctx = tex.getContext();
+      for (const x of [3, 11]) {
+        const g = ctx.createRadialGradient(x, 3, 0.3, x, 3, 3);
+        g.addColorStop(0, 'rgba(255,60,50,1)');
+        g.addColorStop(0.5, 'rgba(220,30,30,0.7)');
+        g.addColorStop(1, 'rgba(200,20,20,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - 3, 0, 6, 6);
+      }
+      tex.refresh();
+    }
+  }
+}
+
 export function generateWallTexturesFromWallpaper(scene: Phaser.Scene) {
   if (!scene.textures.exists('wallpaperStrip')) return;
   const src = scene.textures.get('wallpaperStrip').getSourceImage() as HTMLImageElement;

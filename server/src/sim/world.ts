@@ -17,6 +17,7 @@ import type {
 } from '@backrooms/shared';
 import { z } from 'zod';
 import { config } from '../config.js';
+import { db } from '../db/db.js';
 import { agentRepo, kv, memoryRepo, thoughtRepo } from '../db/repo.js';
 import { Maze } from './maze.js';
 import { EvidenceStore } from './evidence.js';
@@ -104,6 +105,13 @@ export class World {
     if (!storedSeed) kv.set('worldSeed', this.seed);
     this.tick = Number(kv.get('tick') ?? 0);
     this.maze = new Maze(this.seed);
+
+    // one-time migration: worlds generated before the darkness rework had
+    // pre-lit sectors; the maze is dark now unless events power it
+    if (!kv.get('darknessMigrated')) {
+      db.prepare('UPDATE chunks SET lights_on = 0').run();
+      kv.set('darknessMigrated', '1');
+    }
 
     this.bus = new EventBus(() => this.tick);
     this.registerMutators();
@@ -521,8 +529,6 @@ export class World {
       const gx = Math.floor(c.x + (Math.random() - 0.5) * 2 * CHUNK_SIZE);
       const gy = Math.floor(c.y + (Math.random() - 0.5) * 2 * CHUNK_SIZE);
       this.maze.growAround(gx, gy, 0);
-      const ck = this.maze.getLoaded(chunkKey(tileToChunk(gx), tileToChunk(gy)));
-      if (!ck?.lightsOn) continue;
       const spot = this.maze.nearestWalkable(gx, gy, 8);
       if (spot) return spot;
     }

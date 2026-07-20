@@ -317,10 +317,9 @@ export class Maze {
     };
     subdivide(0, 0, S, S, 0);
 
-    const distFromOrigin = Math.max(Math.abs(cx), Math.abs(cy));
-    const lightsOn = distFromOrigin < 2 ? true : rng() < 0.7;
-
-    return { cx, cy, tiles, wallsH, wallsV, lightsOn, version: 0, freshlyGenerated: true };
+    // the maze is BORN dark everywhere — power arrives only through
+    // outside-world events (viral attention, buybacks)
+    return { cx, cy, tiles, wallsH, wallsV, lightsOn: false, version: 0, freshlyGenerated: true };
   }
 
   /** Nearest walkable tile (spiral, loaded chunks only). */

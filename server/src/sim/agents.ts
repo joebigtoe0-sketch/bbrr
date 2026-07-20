@@ -419,14 +419,14 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
     }
   }
 
-  // stress integration
+  // stress integration: the whole maze is dark now — their flashlights keep
+  // ambient dread mild, and recovery only stalls when the monster is in view
   let dStress = 0;
   if (a.monsterVisible) dStress += 2 * dt;
   const chunk = world.maze.getLoaded(chunkKey(tileToChunk(Math.floor(a.x)), tileToChunk(Math.floor(a.y))));
-  if (chunk && !chunk.lightsOn) dStress += 0.5 * dt;
+  if (chunk && !chunk.lightsOn) dStress += 0.25 * dt;
   const resting = a.restUntil > now;
-  const decay = (resting ? 2 : 1) * dt;
-  if (a.stress > 10 && dStress === 0) dStress -= decay;
+  if (!a.monsterVisible && a.stress > 10) dStress -= (resting ? 2 : 1) * dt;
   a.stress = Math.max(0, Math.min(100, a.stress + dStress));
 
   // attention decays slowly

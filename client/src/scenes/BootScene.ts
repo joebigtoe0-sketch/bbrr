@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
-import { generateTextures, generateWallTexturesFromWallpaper } from '../render/textures.js';
+import {
+  generateLightingTextures,
+  generateTextures,
+  generateWallTexturesFromWallpaper,
+} from '../render/textures.js';
 
 /**
  * Real (transparent) generated art loaded into engine texture keys. Anything
@@ -31,6 +35,7 @@ export class BootScene extends Phaser.Scene {
   }
   create() {
     generateWallTexturesFromWallpaper(this);
+    generateLightingTextures(this);
     generateTextures(this); // fills only the keys not already provided above
     this.scene.start('world');
   }

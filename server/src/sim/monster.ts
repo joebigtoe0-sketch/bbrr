@@ -70,8 +70,15 @@ export function tickMonster(world: World, dtMs: number, now: number) {
     }
     a.monsterVisible = visible;
 
-    // even a sated monster is not something you can stand inside
-    if (m.mode !== 'dormant' && d < 1.2 && a.state !== 'dead') {
+    // touch kill: requires actual contact WITH sight — never through a wall.
+    // A sated monster only kills if you literally stand inside it.
+    const touchRadius = now < m.satedUntil ? 0.6 : 1.1;
+    if (
+      m.mode !== 'dormant' &&
+      d < touchRadius &&
+      a.state !== 'dead' &&
+      hasLineOfSight(m.x, m.y, a.x, a.y, world.maze.canStep)
+    ) {
       world.killAgent(a, 'stood too close to the thing in the halls');
       m.mode = 'dormant';
       m.dormantUntil = now + 60000;
