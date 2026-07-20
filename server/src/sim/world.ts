@@ -44,6 +44,21 @@ import { ChaosTextQueue } from '../brain/chaosText.js';
 
 type Delta = Omit<z.infer<typeof DeltaMsg>, 't'>;
 
+const AMBIENT_NOTES = [
+  'day 34. the hum changed pitch again. counting doors until it changes back.',
+  'if you find this: the water in the walls is not water.',
+  'we agreed to meet at the humming room. nobody came. nobody ever came.',
+  'DO NOT SLEEP ON THE CARPET',
+  'the lights know. keep smiling.',
+  'i measured this room twice. it was bigger the second time.',
+  'tally marks are useless. the walls erase them when you blink.',
+  'to whoever comes after me: the exit signs are a rota. they take turns lying.',
+  'heard my own voice two rooms over. did not go look.',
+  'inventory: 3 cans, 1 lighter, 0 reasons.',
+  'if the printer prints on its own, do not read page two.',
+  'someone keeps moving the terminals. or the rooms. or me.',
+] as const;
+
 const NAME_POOL = [
   'Vera', 'Kaz', 'Moth', 'Ida', 'Sol', 'Rune', 'Pell', 'Nyx', 'Aster', 'Grey',
   'Wren', 'Tallow', 'Juno', 'Harrow', 'Lux', 'Fen', 'Orrin', 'Sable', 'Quill', 'Vesper',
@@ -499,10 +514,12 @@ export class World {
   }
 
   private findSpawnSpot(): { x: number; y: number } {
-    const c = this.activityCentroid();
+    // everyone wakes up near the origin "lobby": keeps a stable hub where
+    // spectators can always find activity instead of an ever-sprawling world
+    const c = { x: 8, y: 8 };
     for (let attempt = 0; attempt < 30; attempt++) {
-      const gx = Math.floor(c.x + (Math.random() - 0.5) * 3 * CHUNK_SIZE);
-      const gy = Math.floor(c.y + (Math.random() - 0.5) * 3 * CHUNK_SIZE);
+      const gx = Math.floor(c.x + (Math.random() - 0.5) * 2 * CHUNK_SIZE);
+      const gy = Math.floor(c.y + (Math.random() - 0.5) * 2 * CHUNK_SIZE);
       this.maze.growAround(gx, gy, 0);
       const ck = this.maze.getLoaded(chunkKey(tileToChunk(gx), tileToChunk(gy)));
       if (!ck?.lightsOn) continue;
@@ -533,13 +550,20 @@ export class World {
         }
       if (floorCells.length === 0) continue;
       const spot = () => floorCells[Math.floor(rng() * floorCells.length)]!;
-      if (rng() < 0.45) {
+      if (rng() < 0.55) {
         const s = spot();
         this.evidence.create('crt', s.x, s.y, this.tick, { meta: { lines: [] } });
       }
-      if (rng() < 0.2) {
+      if (rng() < 0.3) {
         const s = spot();
         this.evidence.create('printer', s.x, s.y, this.tick, {});
+      }
+      // ambient litter: somebody was here before, long ago
+      if (rng() < 0.35) {
+        const s = spot();
+        this.evidence.create('note', s.x, s.y, this.tick, {
+          text: AMBIENT_NOTES[Math.floor(rng() * AMBIENT_NOTES.length)]!,
+        });
       }
       const dist = Math.max(Math.abs(c.cx), Math.abs(c.cy));
       if (rng() < Math.min(0.35, 0.08 + dist * 0.02)) {

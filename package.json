@@ -11,11 +11,16 @@
     "dev": "concurrently -n server,client -c blue,yellow \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
     "gen:assets": "node scripts/gen-assets.mjs",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
     "pngjs": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

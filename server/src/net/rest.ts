@@ -1,4 +1,7 @@
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { AdminDebugBody, AdminEventBody, SpawnAgentBody } from '@backrooms/shared';
 import { config, isDev } from '../config.js';
@@ -122,6 +125,12 @@ export function buildRest(world: World, scheduler: BrainScheduler): Express {
     }
     res.json({ ok: true });
   });
+
+  // production: serve the built client from the same port (Railway runs one service)
+  const clientDist = resolve(fileURLToPath(import.meta.url), '../../../../client/dist');
+  if (existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+  }
 
   app.get('/api/health', (_req, res) => {
     res.json({

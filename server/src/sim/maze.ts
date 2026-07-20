@@ -271,7 +271,9 @@ export class Maze {
       const canV = w >= 6;
       const canH = h >= 6;
       if ((!canV && !canH) || depth > 6) return;
-      if (depth > 0 && rng() < 0.12) return; // occasional larger hall
+      // occasional larger hall — but never a cavern: anything over 9 tiles splits
+      const mustSplit = w > 9 || h > 9;
+      if (!mustSplit && depth > 0 && rng() < 0.1) return;
       const vertical = canV && (!canH || w >= h ? true : rng() < 0.5);
       if (vertical) {
         // pick a split whose endpoints don't run into an existing doorway
