@@ -129,6 +129,7 @@ export function buildRest(world: World, scheduler: BrainScheduler): Express {
   // production: serve the built client from the same port (Railway runs one service)
   const clientDist = resolve(fileURLToPath(import.meta.url), '../../../../client/dist');
   if (existsSync(clientDist)) {
+    app.get('/admin', (_req, res) => res.redirect('/admin.html'));
     app.use(express.static(clientDist));
   }
 
