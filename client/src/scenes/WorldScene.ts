@@ -47,6 +47,9 @@ interface AgentView {
   lightOuter: { x: number; y: number }[] | null;
   lightInner: { x: number; y: number }[] | null;
   lightAt: number;
+  /** grid position the polygon was computed at (to translate between recomputes) */
+  lightGX: number;
+  lightGY: number;
   facing: string;
 }
 
@@ -632,6 +635,8 @@ export class WorldScene extends Phaser.Scene {
         lightOuter: null,
         lightInner: null,
         lightAt: 0,
+        lightGX: a.x,
+        lightGY: a.y,
         facing: a.facing,
       };
       this.agentViews.set(a.id, v);
@@ -655,6 +660,8 @@ export class WorldScene extends Phaser.Scene {
    */
   private computeLight(v: AgentView) {
     v.lightAt = this.time.now;
+    v.lightGX = v.gx;
+    v.lightGY = v.gy;
     const px = v.gx;
     const py = v.gy;
     const R = 7.5;
@@ -684,7 +691,7 @@ export class WorldScene extends Phaser.Scene {
 
     const outer: { x: number; y: number }[] = [];
     const inner: { x: number; y: number }[] = [];
-    const N = 84;
+    const N = 96;
     for (let i = 0; i < N; i++) {
       const th = (i / N) * Math.PI * 2;
       let dAng = Math.abs(th - beamAng);
@@ -1029,20 +1036,27 @@ export class WorldScene extends Phaser.Scene {
     // ---- the darkness: repaint the veil, then carve light out of it ----
     {
       const cam = this.cameras.main;
-      const view = cam.worldView;
-      // world-space veil sized to the view (margin avoids per-frame resizes)
-      const needW = Math.ceil(view.width) + 8;
-      const needH = Math.ceil(view.height) + 8;
+      // compute the view from the camera's CURRENT scroll/zoom: worldView is
+      // only refreshed at render time, and using last frame's view leaves an
+      // uncovered band on the leading edge while the camera pans (worse the
+      // higher the zoom)
+      const vw = cam.width / cam.zoom;
+      const vh = cam.height / cam.zoom;
+      const vx = cam.scrollX + (cam.width - vw) / 2;
+      const vy = cam.scrollY + (cam.height - vh) / 2;
+      const PAD = 160;
+      const needW = Math.ceil(vw) + PAD * 2;
+      const needH = Math.ceil(vh) + PAD * 2;
       if (
         this.darkRT.width < needW ||
         this.darkRT.height < needH ||
-        this.darkRT.width > needW + 500 ||
-        this.darkRT.height > needH + 500
+        this.darkRT.width > needW + 600 ||
+        this.darkRT.height > needH + 600
       ) {
-        this.darkRT.resize(needW + 120, needH + 120);
+        this.darkRT.resize(needW + 200, needH + 200);
       }
-      const rtX = view.x - 4;
-      const rtY = view.y - 4;
+      const rtX = vx - PAD;
+      const rtY = vy - PAD;
       this.darkRT.setPosition(rtX, rtY);
       this.darkRT.clear();
       this.darkRT.fill(0x030304, 0.93);
@@ -1051,15 +1065,22 @@ export class WorldScene extends Phaser.Scene {
         if (rec.v <= 0.02) continue;
         const [cx, cy] = key.split(',').map(Number);
         const center = gridToScreen(cx! * CHUNK_SIZE + 8, cy! * CHUNK_SIZE + 8);
-        if (center.sx < view.x - 900 || center.sx > view.right + 900) continue;
-        if (center.sy < view.y - 600 || center.sy > view.bottom + 600) continue;
+        if (center.sx < vx - 900 || center.sx > vx + vw + 900) continue;
+        if (center.sy < vy - 600 || center.sy > vy + vh + 600) continue;
         this.eraserChunk.setScale(2.4).setAlpha(rec.v);
         this.darkRT.erase(this.eraserChunk, center.sx - rtX, center.sy - rtY);
       }
       // flashlights: shadow-cast light polygons — light cannot pass walls
       for (const v of this.agentViews.values()) {
-        if (_time - v.lightAt > 90) this.computeLight(v);
+        const moved = Math.hypot(v.gx - v.lightGX, v.gy - v.lightGY);
+        if (_time - v.lightAt > 70 || moved > 0.35) this.computeLight(v);
         if (v.lightOuter && v.lightOuter.length > 2) {
+          // translate the cached polygon so the light stays glued to its
+          // carrier between recomputes
+          const o = entityToScreen(v.lightGX, v.lightGY);
+          const c = entityToScreen(v.gx, v.gy);
+          const ox = c.sx - o.sx - rtX;
+          const oy = c.sy - o.sy - rtY;
           this.lightGfx.clear();
           this.lightGfx.fillStyle(0xffffff, 0.55);
           this.lightGfx.fillPoints(v.lightOuter, true);
@@ -1067,10 +1088,10 @@ export class WorldScene extends Phaser.Scene {
             this.lightGfx.fillStyle(0xffffff, 0.6);
             this.lightGfx.fillPoints(v.lightInner, true);
           }
-          this.darkRT.erase(this.lightGfx, -rtX, -rtY);
+          this.darkRT.erase(this.lightGfx, ox, oy);
         }
-        // tight personal glow (soft center; too small to leak through walls)
-        this.eraserPool.setScale(0.45).setAlpha(0.9);
+        // tight personal glow (small enough not to spill past a wall)
+        this.eraserPool.setScale(0.3).setAlpha(0.85);
         this.darkRT.erase(this.eraserPool, v.sprite.x - rtX, v.sprite.y - 14 - rtY);
       }
       // the chaos thing glows faintly when it manifests
