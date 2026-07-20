@@ -991,7 +991,7 @@ export class WorldScene extends Phaser.Scene {
   update(_time: number, dt: number) {
     // agent motion: retrace the server's path samples (no corner cutting)
     for (const [id, v] of this.agentViews) {
-      this.advanceAlongQueue(v, dt, 2.4);
+      this.advanceAlongQueue(v, dt, 1.8);
       const p = entityToScreen(v.gx, v.gy);
       v.sprite.setPosition(p.sx, p.sy + 10).setDepth(depthOf(v.gx, v.gy, 2));
       v.label.setPosition(p.sx, p.sy - 32).setDepth(depthOf(v.gx, v.gy, 4));
@@ -1011,7 +1011,7 @@ export class WorldScene extends Phaser.Scene {
     // monster: same trail-following, plus its unsettling jitter
     {
       const t = this.monsterTrail;
-      this.advanceAlongQueue(t, dt, 2.8);
+      this.advanceAlongQueue(t, dt, 2.3);
       const p = entityToScreen(t.gx, t.gy);
       this.monsterView
         .setPosition(p.sx + (Math.random() - 0.5) * 2, p.sy + 12 + (Math.random() - 0.5) * 1.5)

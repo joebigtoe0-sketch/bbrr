@@ -3,9 +3,9 @@ export const PROTOCOL_VERSION = 1;
 export const CHUNK_SIZE = 16;
 export const SIM_TICK_MS = 100;
 
-export const AGENT_SPEED = 2.0; // tiles per second
-export const MONSTER_ROAM_SPEED = 1.5;
-export const MONSTER_HUNT_SPEED = 2.3;
+export const AGENT_SPEED = 1.45; // tiles per second - unhurried, uneasy
+export const MONSTER_ROAM_SPEED = 1.2;
+export const MONSTER_HUNT_SPEED = 1.9;
 
 export const TILE = {
   Void: 0,

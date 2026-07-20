@@ -213,10 +213,10 @@ function resolveMoveTarget(
   const ax = Math.floor(a.x);
   const ay = Math.floor(a.y);
   switch (act.target) {
-    case 'north': return world.maze.nearestWalkable(ax, ay - 10);
-    case 'south': return world.maze.nearestWalkable(ax, ay + 10);
-    case 'east': return world.maze.nearestWalkable(ax + 10, ay);
-    case 'west': return world.maze.nearestWalkable(ax - 10, ay);
+    case 'north': return world.maze.nearestWalkable(ax, ay - 7);
+    case 'south': return world.maze.nearestWalkable(ax, ay + 7);
+    case 'east': return world.maze.nearestWalkable(ax + 7, ay);
+    case 'west': return world.maze.nearestWalkable(ax - 7, ay);
     case 'toward_light': {
       // nearest lit chunk center within 3 chunks
       const ccx = tileToChunk(ax);
@@ -241,22 +241,28 @@ function resolveMoveTarget(
       return world.maze.nearestWalkable(best.x, best.y);
     }
     case 'toward_unexplored': {
-      // head toward the least-visited neighboring chunk
+      // head toward the least-visited neighboring chunk, with a homeward
+      // pull so the colony stays tight - and past 14 chunks out, the maze
+      // simply folds you back (nobody notices; escape is impossible)
       const ccx = tileToChunk(ax);
       const ccy = tileToChunk(ay);
+      const distNow = Math.max(Math.abs(ccx), Math.abs(ccy));
       let bestDir = { dx: 1, dy: 0 };
-      let bestVisits = Infinity;
+      let bestScore = Infinity;
       for (const dir of [
         { dx: 1, dy: 0 },
         { dx: -1, dy: 0 },
         { dx: 0, dy: 1 },
         { dx: 0, dy: -1 },
       ]) {
+        const nd = Math.max(Math.abs(ccx + dir.dx), Math.abs(ccy + dir.dy));
+        if (distNow > 14 && nd >= distNow) continue; // the fold
         const v = world.chunkVisits.get(chunkKey(ccx + dir.dx, ccy + dir.dy)) ?? 0;
         // small deterministic jitter so agents don't all pick the same direction
         const jitter = ((a.decisionCount * 7 + dir.dx * 3 + dir.dy * 5) % 4) * 0.25;
-        if (v + jitter < bestVisits) {
-          bestVisits = v + jitter;
+        const score = v + jitter + nd * 0.35;
+        if (score < bestScore) {
+          bestScore = score;
           bestDir = dir;
         }
       }

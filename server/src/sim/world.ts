@@ -326,10 +326,8 @@ export class World {
           if (!a || a.state === 'dead') break;
           a.attention = Math.min(100, a.attention + magnitude);
           this.addMemoryNote(a, 'You can feel it: attention from outside this place is increasing.');
-          const ccx = tileToChunk(Math.floor(a.x));
-          const ccy = tileToChunk(Math.floor(a.y));
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) this.powerChunk(ccx + dx, ccy + dy, 240_000);
+          // one sector of light per surge - light should be scarce
+          this.powerChunk(tileToChunk(Math.floor(a.x)), tileToChunk(Math.floor(a.y)), 240_000);
           this.unlockDoorNear(a.x, a.y, 6 * CHUNK_SIZE);
           break;
         }
@@ -575,16 +573,29 @@ export class World {
         }
       if (floorCells.length === 0) continue;
       const spot = () => floorCells[Math.floor(rng() * floorCells.length)]!;
-      if (rng() < 0.55) {
+      // furnished corner: terminal with its printer beside it, litter around -
+      // little abandoned workstations instead of lonely scattered machines
+      if (rng() < 0.75) {
         const s = spot();
         this.evidence.create('crt', s.x, s.y, this.tick, { meta: { lines: [] } });
+        if (rng() < 0.6) {
+          const near = floorCells
+            .filter((c2) => Math.abs(c2.x - s.x) + Math.abs(c2.y - s.y) <= 2 && (c2.x !== s.x || c2.y !== s.y))
+            .sort(() => rng() - 0.5)[0];
+          if (near) this.evidence.create('printer', near.x, near.y, this.tick, {});
+        }
+        if (rng() < 0.5) {
+          const near = floorCells
+            .filter((c2) => Math.abs(c2.x - s.x) + Math.abs(c2.y - s.y) <= 3)
+            .sort(() => rng() - 0.5)[0];
+          if (near)
+            this.evidence.create('note', near.x, near.y, this.tick, {
+              text: AMBIENT_NOTES[Math.floor(rng() * AMBIENT_NOTES.length)]!,
+            });
+        }
       }
+      // stray litter elsewhere
       if (rng() < 0.3) {
-        const s = spot();
-        this.evidence.create('printer', s.x, s.y, this.tick, {});
-      }
-      // ambient litter: somebody was here before, long ago
-      if (rng() < 0.35) {
         const s = spot();
         this.evidence.create('note', s.x, s.y, this.tick, {
           text: AMBIENT_NOTES[Math.floor(rng() * AMBIENT_NOTES.length)]!,
