@@ -3,7 +3,14 @@ import { CHUNK_SIZE, EDGE, TILE, chunkKey, tileToChunk } from '@backrooms/shared
 import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
-import { FLOOR_DEPTH, WALL_H, depthOf, gridToScreen, screenToGrid } from '../render/iso.js';
+import {
+  FLOOR_DEPTH,
+  WALL_H,
+  depthOf,
+  entityToScreen,
+  gridToScreen,
+  screenToGrid,
+} from '../render/iso.js';
 import {
   initReader,
   initSpawnModal,
@@ -60,6 +67,7 @@ const ART_HEIGHT: Record<string, number> = {
   rubble: 30,
   lightOn: 16,
   lightOff: 16,
+  note: 14,
 };
 
 function scaleArt(img: Phaser.GameObjects.Image): Phaser.GameObjects.Image {
@@ -280,7 +288,7 @@ export class WorldScene extends Phaser.Scene {
             this.add
               .image(p.sx, p.sy, 'rubble')
               .setOrigin(0.5, 0.6)
-              .setDepth(depthOf(gx, gy, -2))
+              .setDepth(depthOf(gx + 0.5, gy + 0.5, -4))
               .setTint(tileTint),
           );
           sprites.push(img);
@@ -293,7 +301,7 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(0, 1)
-            .setDepth(depthOf(gx, gy, -3))
+            .setDepth(depthOf(gx + 0.5, gy, 0))
             .setTint(this.tintFor(this.brightnessAt(gx + 0.5, gy)));
           sprites.push(img);
           const wk = `h:${gx},${gy}`;
@@ -306,7 +314,7 @@ export class WorldScene extends Phaser.Scene {
           const img = this.add
             .image(p.sx, p.sy, tex)
             .setOrigin(1, 1)
-            .setDepth(depthOf(gx, gy, -3))
+            .setDepth(depthOf(gx, gy + 0.5, 0))
             .setTint(this.tintFor(this.brightnessAt(gx, gy + 0.5)));
           sprites.push(img);
           const wk = `v:${gx},${gy}`;
@@ -322,8 +330,9 @@ export class WorldScene extends Phaser.Scene {
           const bar = scaleArt(
             this.add
               .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
-              .setDepth(depthOf(gx, gy, 7))
-              .setTint(this.tintFor(Math.max(0.35, b))),
+              .setDepth(depthOf(gx + 0.5, gy + 0.5, 20))
+              // both states share one image; a cold dark tint sells "dead tubes"
+              .setTint(c.lightsOn ? this.tintFor(Math.max(0.35, b)) : 0x3f4450),
           );
           sprites.push(bar);
           if (c.lightsOn) {
@@ -332,7 +341,7 @@ export class WorldScene extends Phaser.Scene {
               .setBlendMode(Phaser.BlendModes.ADD)
               .setScale(2.2, 1.4)
               .setAlpha(Math.max(0.2, b))
-              .setDepth(depthOf(gx, gy, -1));
+              .setDepth(depthOf(gx + 0.5, gy + 0.5, -6));
             sprites.push(glow);
           }
         }
@@ -369,7 +378,8 @@ export class WorldScene extends Phaser.Scene {
 
   private upsertEvidence(e: EvidenceArtifact, isNew: boolean) {
     for (const o of this.evidenceViews.get(e.id) ?? []) o.destroy();
-    const p = gridToScreen(e.x + 0.5, e.y + 0.5);
+    const p = entityToScreen(e.x + 0.5, e.y + 0.5);
+    const eDepth = (bias = 0) => depthOf(e.x + 0.5, e.y + 0.5, bias);
     const objs: Phaser.GameObjects.GameObject[] = [];
     const interactive = (obj: Phaser.GameObjects.Image | Phaser.GameObjects.Text, handler: () => void) => {
       obj.setInteractive({ useHandCursor: true });
@@ -391,7 +401,7 @@ export class WorldScene extends Phaser.Scene {
           })
           .setOrigin(0.5)
           .setAngle(-12)
-          .setDepth(depthOf(e.x, e.y, 1));
+          .setDepth(eDepth(-2));
         interactive(txt, () =>
           openReader('GRAFFITI', [
             `"${e.text ?? ''}"`,
@@ -403,7 +413,7 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'crt': {
         const img = scaleArt(
-          this.add.image(p.sx, p.sy + 6, 'crt').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+          this.add.image(p.sx, p.sy + 6, 'crt').setOrigin(0.5, 1).setDepth(eDepth()),
         );
         interactive(img, () => {
           const lines = (e.meta?.lines as string[] | undefined) ?? [];
@@ -417,7 +427,7 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'printer': {
         const img = scaleArt(
-          this.add.image(p.sx, p.sy + 4, 'printer').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+          this.add.image(p.sx, p.sy + 4, 'printer').setOrigin(0.5, 1).setDepth(eDepth()),
         );
         interactive(img, () => openReader('PRINTER', ['An old printer. It hums, waiting.']));
         objs.push(img);
@@ -426,10 +436,12 @@ export class WorldScene extends Phaser.Scene {
       case 'printout':
       case 'note': {
         // nudged up-screen so paper scraps sit clear of the tile's front walls
-        const img = this.add
-          .image(p.sx, p.sy - 5, e.kind === 'printout' ? 'paper' : 'note')
-          .setOrigin(0.5, 0.5)
-          .setDepth(depthOf(e.x, e.y, -1));
+        const img = scaleArt(
+          this.add
+            .image(p.sx, p.sy - 5, e.kind === 'printout' ? 'paper' : 'note')
+            .setOrigin(0.5, 0.5)
+            .setDepth(eDepth(-4)),
+        );
         interactive(img, () =>
           openReader(e.kind === 'printout' ? 'PRINTOUT' : 'HANDWRITTEN NOTE', [
             e.text ?? '(blank)',
@@ -441,7 +453,7 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'sign': {
         const img = scaleArt(
-          this.add.image(p.sx, p.sy + 6, 'sign').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+          this.add.image(p.sx, p.sy + 6, 'sign').setOrigin(0.5, 1).setDepth(eDepth()),
         );
         const arrow = this.add
           .text(p.sx, p.sy - 14, e.text?.replace('EXIT ', '') ?? '?', {
@@ -450,14 +462,14 @@ export class WorldScene extends Phaser.Scene {
             color: '#1a1a0a',
           })
           .setOrigin(0.5)
-          .setDepth(depthOf(e.x, e.y, 1));
+          .setDepth(eDepth(1));
         interactive(img, () => openReader('SIGN', [e.text ?? '', '', 'It looks official. Probably.']));
         objs.push(img, arrow);
         break;
       }
       case 'crate': {
         const img = scaleArt(
-          this.add.image(p.sx, p.sy + 6, 'crate').setOrigin(0.5, 1).setDepth(depthOf(e.x, e.y)),
+          this.add.image(p.sx, p.sy + 6, 'crate').setOrigin(0.5, 1).setDepth(eDepth()),
         );
         if (isNew) {
           img.setY(p.sy - 220);
@@ -474,7 +486,7 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'corpse': {
         const img = scaleArt(
-          this.add.image(p.sx, p.sy, 'corpse').setOrigin(0.5, 0.85).setDepth(depthOf(e.x, e.y, -1)),
+          this.add.image(p.sx, p.sy, 'corpse').setOrigin(0.5, 0.85).setDepth(eDepth(-4)),
         );
         interactive(img, () => openReader('REMAINS', [e.text ?? 'Somebody. Once.']));
         if (isNew) {
@@ -489,7 +501,7 @@ export class WorldScene extends Phaser.Scene {
         const img = this.add
           .image(p.sx, p.sy, 'note')
           .setOrigin(0.5, 0.5)
-          .setDepth(depthOf(e.x, e.y, -1));
+          .setDepth(eDepth(-4));
         interactive(img, () => openReader(e.kind.toUpperCase(), [e.text ?? '']));
         objs.push(img);
         break;
@@ -503,7 +515,7 @@ export class WorldScene extends Phaser.Scene {
   private upsertAgent(a: Agent) {
     let v = this.agentViews.get(a.id);
     if (!v) {
-      const p = gridToScreen(a.x, a.y);
+      const p = entityToScreen(a.x, a.y);
       const color = Phaser.Display.Color.HSLToColor(a.hue / 360, 0.6, 0.62).color;
       const sprite = this.add
         .image(p.sx, p.sy + 10, 'agent')
@@ -549,7 +561,7 @@ export class WorldScene extends Phaser.Scene {
     const c = this.store.chaos;
     this.chaosView.setVisible(c.visible);
     if (c.visible) {
-      const p = gridToScreen(c.x, c.y);
+      const p = entityToScreen(c.x, c.y);
       this.chaosView.setPosition(p.sx, p.sy + 10).setDepth(depthOf(c.x, c.y, 2));
     }
   }
@@ -802,7 +814,7 @@ export class WorldScene extends Phaser.Scene {
     // agent motion: retrace the server's path samples (no corner cutting)
     for (const [id, v] of this.agentViews) {
       this.advanceAlongQueue(v, dt, 2.4);
-      const p = gridToScreen(v.gx, v.gy);
+      const p = entityToScreen(v.gx, v.gy);
       v.sprite.setPosition(p.sx, p.sy + 10).setDepth(depthOf(v.gx, v.gy, 2));
       v.label.setPosition(p.sx, p.sy - 32).setDepth(depthOf(v.gx, v.gy, 4));
       const a = this.store.agents.get(id);
@@ -815,7 +827,7 @@ export class WorldScene extends Phaser.Scene {
     {
       const t = this.monsterTrail;
       this.advanceAlongQueue(t, dt, 2.8);
-      const p = gridToScreen(t.gx, t.gy);
+      const p = entityToScreen(t.gx, t.gy);
       this.monsterView
         .setPosition(p.sx + (Math.random() - 0.5) * 2, p.sy + 12 + (Math.random() - 0.5) * 1.5)
         .setDepth(depthOf(t.gx, t.gy, 2));
@@ -879,7 +891,10 @@ export class WorldScene extends Phaser.Scene {
         if (!fade.has(wk)) for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(1);
       }
       for (const wk of fade) {
-        for (const img of this.wallIndex.get(wk) ?? []) img.setAlpha(0.45);
+        for (const img of this.wallIndex.get(wk) ?? []) {
+          // door frames are already mostly open; fading them reads as a missing door
+          if (!img.texture.key.startsWith('door')) img.setAlpha(0.45);
+        }
       }
       this.fadedWalls = fade;
     }

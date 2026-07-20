@@ -2,6 +2,65 @@ import Phaser from 'phaser';
 import { TILE_W, TILE_H, WALL_H, WALL_TEX_W, WALL_TEX_H } from './iso.js';
 
 /**
+ * Build the wall/door plane textures from the generated wallpaper strip by
+ * shearing it onto the edge-plane parallelogram. Runs BEFORE generateTextures;
+ * if the wallpaper image isn't loaded, the procedural planes take over.
+ *
+ * Wall-space transform: canvasY = y0 + slope*x + (u - WALL_H), where u runs
+ * 0 (wall top) .. WALL_H (ground). H edges rise to the right (slope +0.5),
+ * V edges fall (slope -0.5).
+ */
+export function generateWallTexturesFromWallpaper(scene: Phaser.Scene) {
+  if (!scene.textures.exists('wallpaperStrip')) return;
+  const src = scene.textures.get('wallpaperStrip').getSourceImage() as HTMLImageElement;
+  const W = WALL_TEX_W;
+  const H = WALL_TEX_H;
+
+  const make = (key: string, dir: 'h' | 'v', style: 'wall' | 'doorway' | 'locked') => {
+    const tex = scene.textures.createCanvas(key, W, H);
+    if (!tex) return;
+    const ctx = tex.getContext();
+    const slope = dir === 'h' ? 0.5 : -0.5;
+    const y0 = dir === 'h' ? H - 16 : H;
+    ctx.setTransform(1, slope, 0, 1, 0, y0 - WALL_H);
+
+    // wallpaper (its baked-in baseboard band lands at the wall bottom)
+    ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, W, WALL_H);
+    // orientation shading: V faces darker, H faces a touch warmer
+    ctx.fillStyle = dir === 'h' ? 'rgba(255,240,200,0.06)' : 'rgba(0,0,25,0.22)';
+    ctx.fillRect(0, 0, W, WALL_H);
+    // top lip
+    ctx.fillStyle = '#d8cb74';
+    ctx.fillRect(0, -2, W, 2);
+
+    if (style === 'doorway') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillRect(0.2 * W, 8, 0.6 * W, WALL_H - 8); // see-through opening
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#3a3216';
+      ctx.fillRect(0.2 * W, 8, 1.5, WALL_H - 8);
+      ctx.fillRect(0.8 * W - 1.5, 8, 1.5, WALL_H - 8);
+      ctx.fillRect(0.2 * W, 8, 0.6 * W, 1.5); // lintel underline
+    } else if (style === 'locked') {
+      ctx.fillStyle = '#241a0e';
+      ctx.fillRect(0.14 * W, 6, 0.72 * W, WALL_H - 6);
+      ctx.fillStyle = '#b3312e';
+      ctx.fillRect(0.2 * W, WALL_H / 2 - 2, 0.6 * W, 4);
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    tex.refresh();
+  };
+
+  make('wallH', 'h', 'wall');
+  make('wallV', 'v', 'wall');
+  make('doorH', 'h', 'doorway');
+  make('doorV', 'v', 'doorway');
+  make('doorLockedH', 'h', 'locked');
+  make('doorLockedV', 'v', 'locked');
+}
+
+/**
  * All placeholder art is generated here with Graphics — no external assets.
  * Backrooms palette: dirty yellows, damp carpet, fluorescent white-green.
  */

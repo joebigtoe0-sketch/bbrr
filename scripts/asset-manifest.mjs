@@ -65,6 +65,20 @@ export const ASSETS = [
       'A pile of collapsed ceiling and floor debris — broken drywall chunks, dust, a bent ceiling grid, a shattered fluorescent tube — three-quarter iso view, sitting as one compact impassable heap.',
   },
   {
+    key: 'note',
+    file: 'note.png',
+    size: '1024x1024',
+    prompt:
+      'A small torn scrap of handwritten paper lying flat on the floor, three-quarter top-down iso view. Hasty illegible pencil scrawl in uneven lines, slightly crumpled with one folded corner, aged and grubby. Single small object.',
+  },
+  {
+    key: 'paper',
+    file: 'paper.png',
+    size: '1024x1024',
+    prompt:
+      'A single sheet of dot-matrix printer paper lying slightly curled on the floor, three-quarter top-down iso view. Faint monospace printed text lines, tractor-feed edge strips with holes, one torn corner. Single small object.',
+  },
+  {
     key: 'lightOn',
     file: 'light_on.png',
     size: '1536x1024',

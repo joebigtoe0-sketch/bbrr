@@ -13,6 +13,17 @@ export function gridToScreen(x: number, y: number): { sx: number; sy: number } {
   return { sx: (x - y) * HALF_W, sy: (x + y) * HALF_H };
 }
 
+/**
+ * Screen position for a CONTINUOUS world position (entities live at
+ * tile+0.5 coords). Tiles draw their diamond center at gridToScreen(gx, gy),
+ * so a continuous position must shift up one half-tile to land on the same
+ * grid — without this, entities render half a tile down-screen and appear to
+ * walk through walls beside doorways.
+ */
+export function entityToScreen(x: number, y: number): { sx: number; sy: number } {
+  return { sx: (x - y) * HALF_W, sy: (x + y) * HALF_H - HALF_H };
+}
+
 /** Inverse of gridToScreen. */
 export function screenToGrid(sx: number, sy: number): { x: number; y: number } {
   return { x: sy / TILE_H + sx / TILE_W, y: sy / TILE_H - sx / TILE_W };

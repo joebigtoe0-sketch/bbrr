@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { generateTextures } from '../render/textures.js';
+import { generateTextures, generateWallTexturesFromWallpaper } from '../render/textures.js';
 
 /**
  * Real (transparent) generated art loaded into engine texture keys. Anything
@@ -13,8 +13,12 @@ const PROP_TEXTURES: [string, string][] = [
   ['sign', '/sprites/generated/sign_exit.png'],
   ['corpse', '/sprites/generated/corpse.png'],
   ['rubble', '/sprites/generated/rubble.png'],
+  ['note', '/sprites/generated/note.png'],
+  // one fixture image for both states; the dark tint sells "off"
   ['lightOn', '/sprites/generated/light_on.png'],
-  ['lightOff', '/sprites/generated/light_off.png'],
+  ['lightOff', '/sprites/generated/light_on.png'],
+  // source material for the sheared wall/door planes
+  ['wallpaperStrip', '/sprites/generated/wallpaper_strip.png'],
 ];
 
 export class BootScene extends Phaser.Scene {
@@ -25,7 +29,8 @@ export class BootScene extends Phaser.Scene {
     for (const [key, url] of PROP_TEXTURES) this.load.image(key, url);
   }
   create() {
-    generateTextures(this); // fills only the keys the load above didn't provide
+    generateWallTexturesFromWallpaper(this);
+    generateTextures(this); // fills only the keys not already provided above
     this.scene.start('world');
   }
 }
