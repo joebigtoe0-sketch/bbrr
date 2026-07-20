@@ -87,6 +87,9 @@ export class World {
 
   private pendingRemovals: string[] = [];
   private pendingSpeech: { agentId: string; text: string }[] = [];
+  /** powered sectors decay: chunkKey -> epoch ms when the light dies */
+  private litExpiry = new Map<string, number>();
+  private lastLightSweepAt = 0;
   private agentChunk = new Map<string, string>();
   private lastEvictAt = 0;
   private lastFlushAt = 0;
@@ -106,12 +109,9 @@ export class World {
     this.tick = Number(kv.get('tick') ?? 0);
     this.maze = new Maze(this.seed);
 
-    // one-time migration: worlds generated before the darkness rework had
-    // pre-lit sectors; the maze is dark now unless events power it
-    if (!kv.get('darknessMigrated')) {
-      db.prepare('UPDATE chunks SET lights_on = 0').run();
-      kv.set('darknessMigrated', '1');
-    }
+    // every boot is a blackout: power is a temporary gift of outside
+    // attention, and it does not survive the world going down
+    db.prepare('UPDATE chunks SET lights_on = 0').run();
 
     this.bus = new EventBus(() => this.tick);
     this.registerMutators();
@@ -181,6 +181,17 @@ export class World {
     if (now - this.lastEvictAt > 30000) {
       this.lastEvictAt = now;
       this.evictChunks();
+    }
+    // the maze reclaims its darkness
+    if (now - this.lastLightSweepAt > 5000) {
+      this.lastLightSweepAt = now;
+      for (const [key, expires] of this.litExpiry) {
+        if (now >= expires) {
+          const [cx, cy] = key.split(',').map(Number);
+          this.maze.setLights(cx!, cy!, false);
+          this.litExpiry.delete(key);
+        }
+      }
     }
     if (now - this.lastFlushAt > 10000) {
       this.lastFlushAt = now;
@@ -318,7 +329,7 @@ export class World {
           const ccx = tileToChunk(Math.floor(a.x));
           const ccy = tileToChunk(Math.floor(a.y));
           for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) this.maze.setLights(ccx + dx, ccy + dy, true);
+            for (let dx = -1; dx <= 1; dx++) this.powerChunk(ccx + dx, ccy + dy, 240_000);
           this.unlockDoorNear(a.x, a.y, 6 * CHUNK_SIZE);
           break;
         }
@@ -330,7 +341,7 @@ export class World {
           for (let dy = -radius; dy <= radius; dy++)
             for (let dx = -radius; dx <= radius; dx++) {
               const key = chunkKey(ccx + dx, ccy + dy);
-              if (this.maze.getLoaded(key)) this.maze.setLights(ccx + dx, ccy + dy, true);
+              if (this.maze.getLoaded(key)) this.powerChunk(ccx + dx, ccy + dy, 360_000);
             }
           break;
         }
@@ -367,6 +378,14 @@ export class World {
         }
       }
     });
+  }
+
+  /** power a sector temporarily; repeated attention extends the timer */
+  private powerChunk(cx: number, cy: number, ms: number) {
+    this.maze.setLights(cx, cy, true);
+    const key = chunkKey(cx, cy);
+    const now = Date.now();
+    this.litExpiry.set(key, Math.max(this.litExpiry.get(key) ?? 0, now + ms));
   }
 
   private unlockDoorNear(x: number, y: number, radius: number) {

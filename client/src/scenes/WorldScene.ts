@@ -270,7 +270,8 @@ export class WorldScene extends Phaser.Scene {
   private onLightChange(cx: number, cy: number, on: boolean) {
     const key = chunkKey(cx, cy);
     const rec = this.powerOf(key, !on); // ensure record exists at previous state
-    this.tweens.add({ targets: rec, v: on ? 1 : 0, duration: 900, ease: 'Sine.easeInOut' });
+    // power arrives with a snap; it dies slowly, like something draining away
+    this.tweens.add({ targets: rec, v: on ? 1 : 0, duration: on ? 900 : 4000, ease: 'Sine.easeInOut' });
     const c = this.store.chunks.get(key);
     if (c) this.buildChunkView(c); // swap fixture bar textures + glows
   }
