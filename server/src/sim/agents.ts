@@ -44,6 +44,8 @@ export interface AgentRuntime {
   deceiving: boolean;
   battery: number;
   energy: number;
+  /** last few action labels - shown to the brain so it can't loop unknowingly */
+  recentActions: string[];
   /** set while the hunt-flee reflex is steering (epoch ms it expires) */
   fleeingUntil: number;
   /** rolling score of notable actions, feeds the simulated-social viral rolls */
@@ -95,6 +97,8 @@ export function executeDecision(world: World, a: AgentRuntime, d: BrainDecision)
   a.heardSinceLastDecision = [];
 
   world.emitThought(a, d.thought, actionLabel(d.action));
+  a.recentActions.push(d.action.type);
+  if (a.recentActions.length > 4) a.recentActions.shift();
 
   const act = d.action;
   a.currentAction = act;

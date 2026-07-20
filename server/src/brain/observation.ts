@@ -139,6 +139,7 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
     memorySummary: a.memory.summary,
     memoryNotes: a.memory.notes.slice(-8),
     lastActionResult: a.lastActionResult,
+    recentActions: a.recentActions.slice(-3),
     hasTerminalNearby,
     hasPrinterNearby,
     hasCrateNearby,

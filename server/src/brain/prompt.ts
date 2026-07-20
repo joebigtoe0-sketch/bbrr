@@ -49,6 +49,7 @@ ACTION is one of:
 {"type":"search"}                                  // open crates / read what is nearby
 {"type":"rest"}
 {"type":"flee"}
+- Talk is cheap in here. If you have agreed to do something, or said roughly the same thing twice, DO IT THIS TURN with a non-say action. Never choose "say" three turns in a row.
 - "memoryNote": one short line worth remembering later, if any.`;
 }
 
@@ -75,6 +76,12 @@ export function userPrompt(obs: Observation): string {
   if (obs.memorySummary) lines.push(`OLDER MEMORIES: ${obs.memorySummary}`);
   if (obs.memoryNotes.length > 0) lines.push(`RECENT MEMORIES: ${obs.memoryNotes.join(' | ')}`);
   lines.push(`LAST ACTION RESULT: ${obs.lastActionResult}.`);
+  if (obs.recentActions.length > 0) {
+    lines.push(`YOUR LAST ACTIONS: ${obs.recentActions.join(', ')}.`);
+    if (obs.recentActions.filter((r) => r === 'say').length >= 2) {
+      lines.push('You have been talking and talking. Words change nothing here. DO something now.');
+    }
+  }
   lines.push('Decide what you do next. JSON only.');
   return lines.join('\n');
 }

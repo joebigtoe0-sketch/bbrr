@@ -378,7 +378,7 @@ export class WorldScene extends Phaser.Scene {
         // fluorescent fixtures, sparser for a moodier found-footage look
         // (proper modulo: JS % is negative for negative coords, which used to
         // erase every fixture west/north of the origin)
-        if (t === TILE.Floor && (((gx % 6) + 6) % 6) === 2 && (((gy % 6) + 6) % 6) === 3) {
+        if (t === TILE.Floor && (((gx % 4) + 4) % 4) === 1 && (((gy % 4) + 4) % 4) === 2) {
           const bar = scaleArt(
             this.add
               .image(p.sx, p.sy - WALL_H - 10, c.lightsOn ? 'lightOn' : 'lightOff')
@@ -734,8 +734,10 @@ export class WorldScene extends Phaser.Scene {
           (((tx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE);
         const h = c.wallsH[li]!;
         const vv = c.wallsV[li]!;
-        if (h === EDGE.Wall || h === EDGE.DoorLocked) segs.push([tx, ty, tx + 1, ty]);
-        if (vv === EDGE.Wall || vv === EDGE.DoorLocked) segs.push([tx, ty, tx, ty + 1]);
+        // endpoints fattened by 0.02 so rays can't needle through the
+        // floating-point gap where two segments meet at a corner
+        if (h === EDGE.Wall || h === EDGE.DoorLocked) segs.push([tx - 0.02, ty, tx + 1.02, ty]);
+        if (vv === EDGE.Wall || vv === EDGE.DoorLocked) segs.push([tx, ty - 0.02, tx, ty + 1.02]);
       }
     }
     return segs;
@@ -773,10 +775,10 @@ export class WorldScene extends Phaser.Scene {
         const gy = c.cy * S + ly;
         if (
           c.tiles[ly * S + lx] === TILE.Floor &&
-          (((gx % 6) + 6) % 6) === 2 &&
-          (((gy % 6) + 6) % 6) === 3
+          (((gx % 4) + 4) % 4) === 1 &&
+          (((gy % 4) + 4) % 4) === 2
         ) {
-          polys.push(this.castRoomLight(gx + 0.5, gy + 0.5, 5.5));
+          polys.push(this.castRoomLight(gx + 0.5, gy + 0.5, 6.0));
         }
       }
     }

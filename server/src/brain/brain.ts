@@ -18,6 +18,7 @@ export interface Observation {
   memorySummary: string;
   memoryNotes: string[];
   lastActionResult: string;
+  recentActions: string[];
   hasTerminalNearby: boolean;
   hasPrinterNearby: boolean;
   hasCrateNearby: boolean;
