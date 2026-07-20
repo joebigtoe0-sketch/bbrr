@@ -164,13 +164,25 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#050503');
     this.cameras.main.setZoom(1.8);
 
-    // the darkness: a WORLD-space veil resized to the camera's view each
-    // frame (screen-pinned overlays get scaled by camera zoom and stop
-    // covering the screen when zooming out)
+    // The darkness veil. Ground rules learned the hard way:
+    //  - never call RenderTexture.resize(): it leaves the internal mapping
+    //    stale and the veil renders stretched (lights drift off carriers,
+    //    screen edges lose coverage)
+    //  - never rely on scrollFactor(0): camera zoom still scales it
+    // So: ONE texture at canvas size, recreated only on canvas resize, and
+    // each frame we position + inverse-zoom-scale it to cover the view
+    // exactly, stamping all light in screen pixels.
     this.darkRT = this.add
       .renderTexture(0, 0, this.scale.width, this.scale.height)
       .setOrigin(0, 0)
       .setDepth(DARKNESS_DEPTH);
+    this.scale.on('resize', () => {
+      this.darkRT.destroy();
+      this.darkRT = this.add
+        .renderTexture(0, 0, this.scale.width, this.scale.height)
+        .setOrigin(0, 0)
+        .setDepth(DARKNESS_DEPTH);
+    });
     this.eraserCone = this.add.image(0, 0, 'flashCone').setOrigin(0.02, 0.5).setVisible(false);
     this.eraserPool = this.add.image(0, 0, 'flashPool').setOrigin(0.5).setVisible(false);
     this.eraserChunk = this.add.image(0, 0, 'chunkLight').setOrigin(0.5).setVisible(false);
@@ -1036,30 +1048,19 @@ export class WorldScene extends Phaser.Scene {
     // ---- the darkness: repaint the veil, then carve light out of it ----
     {
       const cam = this.cameras.main;
-      // compute the view from the camera's CURRENT scroll/zoom: worldView is
-      // only refreshed at render time, and using last frame's view leaves an
-      // uncovered band on the leading edge while the camera pans (worse the
-      // higher the zoom)
-      const vw = cam.width / cam.zoom;
-      const vh = cam.height / cam.zoom;
+      const z = cam.zoom;
+      // live view rect (worldView only refreshes at render time)
+      const vw = cam.width / z;
+      const vh = cam.height / z;
       const vx = cam.scrollX + (cam.width - vw) / 2;
       const vy = cam.scrollY + (cam.height - vh) / 2;
-      const PAD = 160;
-      const needW = Math.ceil(vw) + PAD * 2;
-      const needH = Math.ceil(vh) + PAD * 2;
-      if (
-        this.darkRT.width < needW ||
-        this.darkRT.height < needH ||
-        this.darkRT.width > needW + 600 ||
-        this.darkRT.height > needH + 600
-      ) {
-        this.darkRT.resize(needW + 200, needH + 200);
-      }
-      const rtX = vx - PAD;
-      const rtY = vy - PAD;
-      this.darkRT.setPosition(rtX, rtY);
+      // cover the view exactly: inverse-zoom scale, top-left at the view corner
+      this.darkRT.setScale(1 / z);
+      this.darkRT.setPosition(vx, vy);
       this.darkRT.clear();
       this.darkRT.fill(0x030304, 0.93);
+      // all stamping below is in SCREEN pixels
+      const toRT = (wx: number, wy: number) => ({ x: (wx - vx) * z, y: (wy - vy) * z });
       // powered sectors
       for (const [key, rec] of this.power) {
         if (rec.v <= 0.02) continue;
@@ -1067,20 +1068,22 @@ export class WorldScene extends Phaser.Scene {
         const center = gridToScreen(cx! * CHUNK_SIZE + 8, cy! * CHUNK_SIZE + 8);
         if (center.sx < vx - 900 || center.sx > vx + vw + 900) continue;
         if (center.sy < vy - 600 || center.sy > vy + vh + 600) continue;
-        this.eraserChunk.setScale(2.4).setAlpha(rec.v);
-        this.darkRT.erase(this.eraserChunk, center.sx - rtX, center.sy - rtY);
+        const s = toRT(center.sx, center.sy);
+        this.eraserChunk.setScale(2.4 * z).setAlpha(rec.v);
+        this.darkRT.erase(this.eraserChunk, s.x, s.y);
       }
       // flashlights: shadow-cast light polygons — light cannot pass walls
+      this.lightGfx.setScale(z);
       for (const v of this.agentViews.values()) {
         const moved = Math.hypot(v.gx - v.lightGX, v.gy - v.lightGY);
         if (_time - v.lightAt > 70 || moved > 0.35) this.computeLight(v);
         if (v.lightOuter && v.lightOuter.length > 2) {
           // translate the cached polygon so the light stays glued to its
-          // carrier between recomputes
+          // carrier between recomputes (delta in world px, applied in screen px)
           const o = entityToScreen(v.lightGX, v.lightGY);
           const c = entityToScreen(v.gx, v.gy);
-          const ox = c.sx - o.sx - rtX;
-          const oy = c.sy - o.sy - rtY;
+          const ox = (c.sx - o.sx - vx) * z;
+          const oy = (c.sy - o.sy - vy) * z;
           this.lightGfx.clear();
           this.lightGfx.fillStyle(0xffffff, 0.55);
           this.lightGfx.fillPoints(v.lightOuter, true);
@@ -1091,13 +1094,15 @@ export class WorldScene extends Phaser.Scene {
           this.darkRT.erase(this.lightGfx, ox, oy);
         }
         // tight personal glow (small enough not to spill past a wall)
-        this.eraserPool.setScale(0.3).setAlpha(0.85);
-        this.darkRT.erase(this.eraserPool, v.sprite.x - rtX, v.sprite.y - 14 - rtY);
+        const ps = toRT(v.sprite.x, v.sprite.y - 14);
+        this.eraserPool.setScale(0.3 * z).setAlpha(0.85);
+        this.darkRT.erase(this.eraserPool, ps.x, ps.y);
       }
       // the chaos thing glows faintly when it manifests
       if (this.chaosView.visible) {
-        this.eraserPool.setScale(0.5).setAlpha(0.55);
-        this.darkRT.erase(this.eraserPool, this.chaosView.x - rtX, this.chaosView.y - 16 - rtY);
+        const cs = toRT(this.chaosView.x, this.chaosView.y - 16);
+        this.eraserPool.setScale(0.5 * z).setAlpha(0.55);
+        this.darkRT.erase(this.eraserPool, cs.x, cs.y);
       }
     }
 
