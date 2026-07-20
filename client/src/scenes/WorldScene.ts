@@ -676,8 +676,8 @@ export class WorldScene extends Phaser.Scene {
     v.lightGY = v.gy;
     const px = v.gx;
     const py = v.gy;
-    const R = 7.5;
-    const Rs = 1.7;
+    const R = 7.0;
+    const Rs = 3.2;
     const fd = GRID_DIR[v.facing] ?? [0, 1];
     const beamAng = Math.atan2(fd[1]!, fd[0]!);
 
@@ -702,13 +702,15 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const outer: { x: number; y: number }[] = [];
-    const inner: { x: number; y: number }[] = [];
     const N = 96;
     for (let i = 0; i < N; i++) {
       const th = (i / N) * Math.PI * 2;
       let dAng = Math.abs(th - beamAng);
       if (dAng > Math.PI) dAng = Math.PI * 2 - dAng;
-      const maxR = dAng < 0.72 ? R : Rs;
+      // one smooth teardrop: full room-light all around, reaching ahead —
+      // no hard cone/bubble split (that read as several disjoint lights)
+      const tt = (Math.cos(dAng) + 1) / 2;
+      const maxR = Rs + (R - Rs) * Math.pow(tt, 1.6);
       const dx = Math.cos(th);
       const dy = Math.sin(th);
       let t = maxR;
@@ -718,12 +720,9 @@ export class WorldScene extends Phaser.Scene {
       }
       const op = entityToScreen(px + dx * t, py + dy * t);
       outer.push({ x: op.sx, y: op.sy });
-      const ti = Math.min(t, maxR * 0.55);
-      const ip = entityToScreen(px + dx * ti, py + dy * ti);
-      inner.push({ x: ip.sx, y: ip.sy });
     }
     v.lightOuter = outer;
-    v.lightInner = inner;
+    v.lightInner = null;
   }
 
   private updateMonster() {
@@ -1085,12 +1084,8 @@ export class WorldScene extends Phaser.Scene {
           const ox = (c.sx - o.sx - vx) * z;
           const oy = (c.sy - o.sy - vy) * z;
           this.lightGfx.clear();
-          this.lightGfx.fillStyle(0xffffff, 0.55);
+          this.lightGfx.fillStyle(0xffffff, 0.62);
           this.lightGfx.fillPoints(v.lightOuter, true);
-          if (v.lightInner && v.lightInner.length > 2) {
-            this.lightGfx.fillStyle(0xffffff, 0.6);
-            this.lightGfx.fillPoints(v.lightInner, true);
-          }
           this.darkRT.erase(this.lightGfx, ox, oy);
         }
         // tight personal glow (small enough not to spill past a wall)

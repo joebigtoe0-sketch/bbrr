@@ -1,8 +1,9 @@
 import express from 'express';
-import { existsSync } from 'node:fs';
+import { existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Express, Request, Response, NextFunction } from 'express';
+import { db } from '../db/db.js';
 import { AdminDebugBody, AdminEventBody, SpawnAgentBody } from '@backrooms/shared';
 import { config, isDev } from '../config.js';
 import { agentRepo } from '../db/repo.js';
@@ -86,6 +87,26 @@ export function buildRest(world: World, scheduler: BrainScheduler): Express {
     }
     const event = world.bus.emit(type, finalPayload);
     res.json({ ok: true, eventId: event.id });
+  });
+
+  // FULL RESET: wipe the world file and exit — the process supervisor
+  // (Railway / whatever runs `npm start`) boots a fresh maze with a new seed.
+  app.post('/api/admin/reset', requireAdmin, (_req, res) => {
+    res.json({ ok: true, note: 'world wiped — server restarting with a fresh maze' });
+    console.log('[admin] FULL RESET requested — wiping the world');
+    setTimeout(() => {
+      try {
+        world.stop();
+        db.close();
+        for (const suffix of ['', '-wal', '-shm']) {
+          const f = config.DB_PATH + suffix;
+          if (existsSync(f)) unlinkSync(f);
+        }
+      } catch (err) {
+        console.error('[admin] reset cleanup failed:', err);
+      }
+      process.exit(1); // non-zero so ON_FAILURE restart policies respawn us
+    }, 300);
   });
 
   app.post('/api/admin/debug', requireAdmin, (req, res) => {

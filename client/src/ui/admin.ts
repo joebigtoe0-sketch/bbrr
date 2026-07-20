@@ -87,5 +87,12 @@ $('force-deceiving').onclick = () =>
     value: 1,
   });
 
+$('full-reset').onclick = () => {
+  if (!confirm('Wipe EVERYTHING? All agents, graffiti, corpses, terminal logs — the entire archive. A fresh maze boots with a new seed.')) return;
+  if (!confirm('Last chance. This cannot be undone.')) return;
+  post('/api/admin/reset', {});
+  log('reset requested — the server is restarting; this page will reconnect');
+};
+
 refreshAgents();
 setInterval(refreshAgents, 10000);

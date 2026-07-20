@@ -46,9 +46,18 @@ export class WorldStore {
     }
   }
 
+  private seedSeen: string | null = null;
+
   apply(msg: ServerMsg) {
     switch (msg.t) {
       case 'hello':
+        // a different seed after reconnect means the world was reset —
+        // a clean page reload beats surgically clearing every cache
+        if (this.seedSeen && this.seedSeen !== msg.worldSeed) {
+          location.reload();
+          return;
+        }
+        this.seedSeen = msg.worldSeed;
         this.tick = msg.tick;
         break;
       case 'snapshot': {
