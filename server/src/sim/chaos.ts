@@ -72,6 +72,16 @@ export function tickChaos(world: World, now: number) {
   const tick = world.tick;
   switch (kind) {
     case 'fake_sign': {
+      // a forest of signs stops being a lie and starts being clutter
+      const nearbySigns = world.evidence
+        .within(spot.x, spot.y, 10)
+        .filter((e) => e.kind === 'sign').length;
+      if (nearbySigns >= 2) {
+        world.evidence.create('note', spot.x, spot.y, tick, {
+          text: world.chaosText.next('note'),
+        });
+        break;
+      }
       const arrows = ['←', '→', '↑', '↓'];
       world.evidence.create('sign', spot.x, spot.y, tick, {
         text: `EXIT ${arrows[Math.floor(Math.random() * 4)]}`,

@@ -46,6 +46,7 @@ export interface AgentRuntime {
   energy: number;
   /** last few action labels - shown to the brain so it can't loop unknowingly */
   recentActions: string[];
+  lastGraffitiAt: number;
   /** set while the hunt-flee reflex is steering (epoch ms it expires) */
   fleeingUntil: number;
   /** rolling score of notable actions, feeds the simulated-social viral rolls */
@@ -135,7 +136,20 @@ export function executeDecision(world: World, a: AgentRuntime, d: BrainDecision)
       break;
     }
     case 'write_graffiti': {
+      // graffiti is permanent - keep it scarce or the maze becomes a scribble
+      if (now - a.lastGraffitiAt < 180_000) {
+        a.lastActionResult = 'your marker is nearly dry; save the words until they matter';
+        break;
+      }
+      const nearbyTags = world.evidence
+        .within(a.x, a.y, 6)
+        .filter((e) => e.kind === 'graffiti').length;
+      if (nearbyTags >= 3) {
+        a.lastActionResult = 'every wall here is already covered in writing; find a clean wall elsewhere';
+        break;
+      }
       beginInteract(a, now, 2500);
+      a.lastGraffitiAt = now;
       const wall = nearestWallSpot(world, a);
       world.evidence.create('graffiti', wall.x, wall.y, world.tick, {
         text: act.text,
