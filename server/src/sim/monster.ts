@@ -107,6 +107,8 @@ export function tickMonster(world: World, dtMs: number, now: number) {
         m.huntLostSightAt = now;
         m.repathAt = 0;
         world.bus.emit('hunt_started', { agentId: a.id, name: a.name });
+        // terror thinks fast: the hunted one's next thought comes NOW
+        a.nextDecisionAt = Math.min(a.nextDecisionAt, now + 700);
         break;
       }
     }

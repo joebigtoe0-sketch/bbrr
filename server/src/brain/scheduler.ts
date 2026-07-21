@@ -119,7 +119,13 @@ export class BrainScheduler {
         .finally(() => {
           if (brain.kind === 'openai') this.inFlight--;
           a.deciding = false;
-          a.nextDecisionAt = Date.now() + baseInterval * (0.75 + Math.random() * 0.5);
+          // being hunted compresses time: thoughts race, ~3.5s apart,
+          // regardless of spectator throttling
+          const chased =
+            this.world.monsterRt.mode === 'hunt' &&
+            this.world.monsterRt.targetAgentId === a.id;
+          const interval = chased ? 3500 : baseInterval;
+          a.nextDecisionAt = Date.now() + interval * (0.75 + Math.random() * 0.5);
         });
     }
   }

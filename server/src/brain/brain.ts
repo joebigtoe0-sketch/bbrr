@@ -14,6 +14,9 @@ export interface Observation {
   visibleEvidence: string[]; // up to 5 human-readable lines
   nearbyAgents: { name: string; distance: number; lastSaid: string | null }[];
   monsterNearby: boolean;
+  /** the thing is hunting THIS agent right now */
+  beingChased: boolean;
+  monsterDistance: number;
   heard: string[]; // things said to/near this agent since last decision
   memorySummary: string;
   memoryNotes: string[];

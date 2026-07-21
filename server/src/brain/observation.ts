@@ -135,6 +135,9 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
     visibleEvidence,
     nearbyAgents,
     monsterNearby: a.monsterVisible || md < 12,
+    beingChased:
+      world.monsterRt.mode === 'hunt' && world.monsterRt.targetAgentId === a.id,
+    monsterDistance: Math.round(md),
     heard: a.heardSinceLastDecision.slice(-4),
     memorySummary: a.memory.summary,
     memoryNotes: a.memory.notes.slice(-8),

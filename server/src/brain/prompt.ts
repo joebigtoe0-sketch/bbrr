@@ -70,7 +70,11 @@ export function userPrompt(obs: Observation): string {
         .join('; ')}.`,
     );
   }
-  if (obs.monsterNearby)
+  if (obs.beingChased)
+    lines.push(
+      `IT IS CHASING YOU. RIGHT NOW. ${obs.monsterDistance} steps behind and closing. RUN. Your thought should be short, breathless, fragmentary. Choose "flee" unless you see a genuinely smarter escape (a door to slam, a lit sector, a corner to break its line of sight).`,
+    );
+  else if (obs.monsterNearby)
     lines.push('DANGER: something enormous is moving nearby. You can hear it through the walls.');
   if (obs.heard.length > 0) lines.push(`YOU HEARD: ${obs.heard.join(' | ')}`);
   if (obs.memorySummary) lines.push(`OLDER MEMORIES: ${obs.memorySummary}`);
