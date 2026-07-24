@@ -137,14 +137,14 @@ export function executeDecision(world: World, a: AgentRuntime, d: BrainDecision)
     }
     case 'write_graffiti': {
       // graffiti is permanent - keep it scarce or the maze becomes a scribble
-      if (now - a.lastGraffitiAt < 180_000) {
+      if (now - a.lastGraffitiAt < 360_000) {
         a.lastActionResult = 'your marker is nearly dry; save the words until they matter';
         break;
       }
       const nearbyTags = world.evidence
-        .within(a.x, a.y, 6)
+        .within(a.x, a.y, 8)
         .filter((e) => e.kind === 'graffiti').length;
-      if (nearbyTags >= 3) {
+      if (nearbyTags >= 2) {
         a.lastActionResult = 'every wall here is already covered in writing; find a clean wall elsewhere';
         break;
       }

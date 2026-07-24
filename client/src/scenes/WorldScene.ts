@@ -418,8 +418,13 @@ export class WorldScene extends Phaser.Scene {
 
     switch (e.kind) {
       case 'graffiti': {
-        const img = this.makeGraffiti(e);
-        img.setDepth(eDepth(-3));
+        // small paint splash on the floor; click to read the words
+        const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
+        const img = this.add
+          .image(p.sx, p.sy, `graffitiMark${variant}`)
+          .setOrigin(0.5, 0.5)
+          .setDepth(eDepth(-4))
+          .setAngle(((e.id.charCodeAt(1) ?? 0) % 90) - 45);
         interactive(img, () =>
           openReader('GRAFFITI', [
             `"${e.text ?? ''}"`,
@@ -583,82 +588,6 @@ export class WorldScene extends Phaser.Scene {
    * neighboring wall plane when one exists, otherwise laid flat along the
    * isometric floor. One canvas texture per artifact.
    */
-  private makeGraffiti(e: EvidenceArtifact): Phaser.GameObjects.Image {
-    const key = `graf:${e.id}`;
-    if (this.textures.exists(key)) this.textures.remove(key);
-    const text = (e.text ?? '').slice(0, 42);
-    const font = '13px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
-
-    // measure roughly
-    const probe = document.createElement('canvas').getContext('2d')!;
-    probe.font = font;
-    const tw = Math.min(210, Math.ceil(probe.measureText(text).width) + 8);
-
-    // wall behind the tile? paint it there; else on the carpet
-    const c = this.store.chunks.get(chunkKey(tileToChunk(e.x), tileToChunk(e.y)));
-    const li = (((e.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE) * CHUNK_SIZE +
-      (((e.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE);
-    const onWallH = c && c.wallsH[li] === EDGE.Wall;
-    const onWallV = !onWallH && c && c.wallsV[li] === EDGE.Wall;
-
-    const spray = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
-      ctx.font = font;
-      ctx.textBaseline = 'middle';
-      // soft overspray halo, then the strokes
-      ctx.globalAlpha = 0.28;
-      for (const [ox, oy] of [[-1.5, 0], [1.5, 0.8], [0, -1.4], [0.8, 1.2]]) {
-        ctx.fillText(text, x + ox, y + oy);
-      }
-      ctx.globalAlpha = 0.92;
-      ctx.fillText(text, x, y);
-      // drips
-      ctx.globalAlpha = 0.5;
-      for (let i = 0; i < 3; i++) {
-        const dx = x + 6 + ((i * 53) % Math.max(20, tw - 10));
-        ctx.fillRect(dx, y + 6, 1.2, 4 + ((i * 29) % 7));
-      }
-      ctx.globalAlpha = 1;
-    };
-
-    if (onWallH || onWallV) {
-      // upright on the wall plane, sheared to its slope
-      const W = Math.min(tw + 8, 96);
-      const H = 16 + WALL_H + Math.ceil(W / 2);
-      const tex = this.textures.createCanvas(key, W, H)!;
-      const ctx = tex.getContext();
-      const slope = onWallH ? 0.5 : -0.5;
-      const y0 = onWallH ? 16 : 16 + W / 2;
-      ctx.setTransform(1, slope, 0, 1, 0, y0);
-      ctx.fillStyle = '#b3312e';
-      ctx.save();
-      ctx.scale(Math.min(1, (W - 6) / tw), 1);
-      spray(ctx, 3, WALL_H / 2 + 2);
-      ctx.restore();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      tex.refresh();
-      // anchor exactly like the wall planes: H edges origin(0,1), V edges origin(1,1)
-      const img = this.add.image(0, 0, key).setOrigin(onWallH ? 0 : 1, 1);
-      const gp = gridToScreen(Math.floor(e.x), Math.floor(e.y));
-      img.setPosition(gp.sx, gp.sy);
-      return img;
-    }
-
-    // floor: project along the iso ground plane
-    const W = tw + 20;
-    const H = Math.ceil(W * 0.62) + 16;
-    const tex = this.textures.createCanvas(key, W, H)!;
-    const ctx = tex.getContext();
-    ctx.setTransform(0.9, 0.45, -0.55, 0.34, W / 2, H / 2 - 4);
-    ctx.fillStyle = '#c23b2e';
-    spray(ctx, -tw / 2, 0);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    tex.refresh();
-    const img = this.add.image(0, 0, key).setOrigin(0.5, 0.5);
-    const pp = entityToScreen(e.x + 0.5, e.y + 0.5);
-    img.setPosition(pp.sx, pp.sy);
-    return img;
-  }
-
   // ---------------- agents / monster / chaos ----------------
 
   private upsertAgent(a: Agent) {

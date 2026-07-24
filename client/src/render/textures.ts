@@ -507,6 +507,27 @@ export function generateTextures(scene: Phaser.Scene) {
   g.fillRect(13, -0, 4, 2);
   gen('elevator', 30, 40);
 
+  // ---- graffiti splashes (small paint marks; click to read the text) ----
+  for (let v = 0; v < 3; v++) {
+    g.clear();
+    const cols = [0xc23b2e, 0xb3312e, 0xa8352b];
+    g.fillStyle(cols[v]!, 0.9);
+    // a rough spray blob
+    g.fillCircle(9, 8, 4.5 + v);
+    g.fillCircle(6, 10, 3);
+    g.fillCircle(13, 7, 2.6);
+    g.fillStyle(cols[v]!, 0.55);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      g.fillCircle(9 + Math.cos(a) * (6 + (i % 3)), 8 + Math.sin(a) * (5 + (i % 2)), 1);
+    }
+    // a couple of drips
+    g.fillStyle(cols[v]!, 0.7);
+    g.fillRect(8, 11, 1, 4);
+    g.fillRect(12, 9, 1, 3);
+    g.generateTexture(`graffitiMark${v}`, 18, 18);
+  }
+
   // ---- particle spark ----
   g.clear();
   g.fillStyle(0xffd75e, 1);

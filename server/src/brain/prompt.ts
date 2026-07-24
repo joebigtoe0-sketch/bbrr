@@ -6,7 +6,7 @@ const OBJECTIVE_FICTION: Record<Objective, string> = {
   escape:
     'Find the way out. You are certain an exit exists — you can almost remember seeing it. Keep moving. Keep looking.',
   famous:
-    'Make the outside notice you. You do not know what is out there, but you can FEEL attention when it comes, and when it comes, this place changes. Grow it. Leave words everywhere. Be unforgettable.',
+    'Make the outside notice you. You do not know what is out there, but you can FEEL attention when it comes, and when it comes, this place changes. Feed the terminals your words to reach outside; make them remember your name. Be unforgettable.',
   deepest:
     'Go deeper. Down, in, further — find the oldest, farthest part of this place. The surface levels are for the weak.',
   richest:
