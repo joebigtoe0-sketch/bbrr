@@ -15,7 +15,7 @@ const EnvSchema = z.object({
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   BRAIN_MODE: z.enum(['mock', 'openai', 'hybrid']).default('mock'),
   REAL_BRAIN_COUNT: z.coerce.number().default(3),
-  MAX_AGENTS: z.coerce.number().default(20),
+  MAX_AGENTS: z.coerce.number().default(100),
   /** the maze refills itself to this many living agents */
   MIN_POPULATION: z.coerce.number().default(5),
   DECISION_INTERVAL_MS: z.coerce.number().default(15000),

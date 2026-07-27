@@ -86,6 +86,8 @@ export function initSpawnModal(onSpawned: (agentId: string) => void) {
         modal.classList.remove('open');
         toast(`${data.name} woke up on the damp carpet.`);
         onSpawned(data.agentId);
+      } else if (data.error === 'already_inside') {
+        $('spawn-error').textContent = 'You already have someone inside. Wait for them to fall.';
       } else if (data.error === 'world_full') {
         $('spawn-error').textContent = 'The maze is full. Someone must die first.';
       } else if (data.error === 'rate_limited') {

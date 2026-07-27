@@ -235,6 +235,20 @@ setInterval(() => {
   sendWs({ t: 'subscribe_chunks', coords });
 }, 400);
 
+// ---------------- audio volume ----------------
+{
+  const bg = document.getElementById('vol-bg') as HTMLInputElement;
+  const sfx = document.getElementById('vol-sfx') as HTMLInputElement;
+  const savedBg = Number(localStorage.getItem('backrooms-vol-bg') ?? '50');
+  const savedSfx = Number(localStorage.getItem('backrooms-vol-sfx') ?? '70');
+  bg.value = String(savedBg);
+  sfx.value = String(savedSfx);
+  world.setBgVol(savedBg / 100);
+  world.setSfxVol(savedSfx / 100);
+  bg.oninput = () => { world.setBgVol(Number(bg.value) / 100); localStorage.setItem('backrooms-vol-bg', bg.value); };
+  sfx.oninput = () => { world.setSfxVol(Number(sfx.value) / 100); localStorage.setItem('backrooms-vol-sfx', sfx.value); };
+}
+
 // ---------------- contract address ----------------
 // set once the token launches. left as a placeholder until then.
 const CONTRACT_ADDRESS = '';

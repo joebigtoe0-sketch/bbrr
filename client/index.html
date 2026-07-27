@@ -170,6 +170,26 @@
 
     #hint { position: absolute; bottom: 10px; right: 14px; font-size: 10px; color: #4a4428; z-index: 5; }
 
+    /* ---------- audio volume (bottom left) ---------- */
+    #audio-ctl {
+      position: absolute; left: 250px; bottom: 12px; z-index: 11;
+      background: var(--panel); border: 1px solid #2a2618; border-radius: 3px;
+      padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+    #audio-ctl .row { display: flex; align-items: center; gap: 8px; font-size: 9px; letter-spacing: 1px; color: #6b6340; }
+    #audio-ctl .row span { width: 46px; }
+    #audio-ctl input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 96px; height: 3px;
+      background: #2a2618; border-radius: 2px; outline: none; cursor: pointer;
+    }
+    #audio-ctl input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 10px; height: 10px;
+      border-radius: 50%; background: var(--yellow); cursor: pointer;
+    }
+    #audio-ctl input[type=range]::-moz-range-thumb {
+      width: 10px; height: 10px; border: none; border-radius: 50%; background: var(--yellow); cursor: pointer;
+    }
+
     /* ---------- auto-director (top middle) ---------- */
     #director {
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -366,6 +386,11 @@
   </div>
 
   <button id="director"><span class="dot"></span>AUTO-DIRECTOR</button>
+
+  <div id="audio-ctl">
+    <div class="row"><span>AMBIENT</span><input id="vol-bg" type="range" min="0" max="100" value="50" /></div>
+    <div class="row"><span>SFX</span><input id="vol-sfx" type="range" min="0" max="100" value="70" /></div>
+  </div>
 
   <div id="ca-box">
     <span class="ca-label">CA</span>

@@ -11,8 +11,11 @@ import type { World } from '../sim/world.js';
 import type { BrainScheduler } from '../brain/scheduler.js';
 import type { XClient } from '../social/x.js';
 
+// each IP may have exactly ONE agent inside at a time; when it dies they may
+// send another. A generous hourly cap remains as an anti-spam backstop.
+const ipAgent = new Map<string, string>(); // ip -> the agent id they own
 const spawnBuckets = new Map<string, number[]>();
-const SPAWNS_PER_HOUR = 5;
+const SPAWNS_PER_HOUR = 20;
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
@@ -46,6 +49,15 @@ export function buildRest(world: World, scheduler: BrainScheduler, x?: XClient):
       return;
     }
     const ip = req.ip ?? 'unknown';
+    // one living agent per IP
+    const owned = ipAgent.get(ip);
+    if (owned) {
+      const a = world.agents.get(owned);
+      if (a && a.state !== 'dead') {
+        res.status(429).json({ error: 'already_inside' });
+        return;
+      }
+    }
     if (rateLimited(ip)) {
       res.status(429).json({ error: 'rate_limited' });
       return;
@@ -55,6 +67,7 @@ export function buildRest(world: World, scheduler: BrainScheduler, x?: XClient):
       res.status(429).json({ error: result.error });
       return;
     }
+    ipAgent.set(ip, result.id);
     res.status(201).json({ agentId: result.id, name: result.name });
   });
 

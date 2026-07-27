@@ -96,6 +96,17 @@ export class ThreeWorld {
   private monsterGY = 0;
   private monsterPhase = 0;
   private frameCount = 0;
+  // ---- audio ----
+  private listener?: THREE.AudioListener;
+  private audioBuffers = new Map<string, AudioBuffer>();
+  private ambientAudio?: THREE.Audio;
+  private footstepAudio?: THREE.Audio;
+  private monsterAudio?: THREE.Audio;
+  private bgVol = 0.5;
+  private sfxVol = 0.7;
+  private audioStarted = false;
+  private beepTimer?: number;
+  private monsterNear = false;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -130,6 +141,7 @@ export class ThreeWorld {
     window.addEventListener('resize', () => this.resize());
     this.loadNpcModel();
     this.loadMonsterModel();
+    this.initAudio();
     this.wireStore();
     this.wireInput();
     this.conn.onOpen = () => {};
@@ -341,19 +353,22 @@ export class ThreeWorld {
         const i = ly * S + lx;
         const gx = ox + lx;
         const gy = oy + ly;
+        // Each segment is over-length by WALL_T (0.1 past each end) so that at an
+        // L-corner the perpendicular walls OVERLAP and seal the little outer-corner
+        // gap — otherwise the flashlight shines diagonally through it as a bright
+        // stripe (the real "shadow leak"). Walls also extend below the floor so the
+        // shadow's contact line is buried (no lit sliver under a wall).
         const eh = c.wallsH[i]!;
-        // walls extend BELOW the floor (bottom at -0.15) so the shadow's contact
-        // line is buried and never shows as a lit sliver "under" the wall
         if (eh === EDGE.Wall || eh === EDGE.DoorLocked) {
           // north edge of tile (its y=gy side), running along x across the tile
-          const g = new THREE.BoxGeometry(1, WALL_H + 0.3, WALL_T);
+          const g = new THREE.BoxGeometry(1 + WALL_T, WALL_H + 0.3, WALL_T);
           g.translate(gx + 0.5, WALL_H / 2, gy);
           boxes.push(g);
         }
         const ev = c.wallsV[i]!;
         if (ev === EDGE.Wall || ev === EDGE.DoorLocked) {
           // west edge of tile (its x=gx side), running along z across the tile
-          const g = new THREE.BoxGeometry(WALL_T, WALL_H + 0.3, 1);
+          const g = new THREE.BoxGeometry(WALL_T, WALL_H + 0.3, 1 + WALL_T);
           g.translate(gx, WALL_H / 2, gy + 0.5);
           boxes.push(g);
         }
@@ -406,6 +421,73 @@ export class ThreeWorld {
     let n = 0;
     for (const cm of this.chunkMeshes.values()) n += cm.lights.length;
     return n;
+  }
+
+  // ---------------- audio ----------------
+
+  private initAudio() {
+    this.listener = new THREE.AudioListener();
+    this.cam.add(this.listener);
+    const loader = new THREE.AudioLoader();
+    this.ambientAudio = new THREE.Audio(this.listener);
+    this.footstepAudio = new THREE.Audio(this.listener);
+    this.monsterAudio = new THREE.Audio(this.listener);
+    loader.load('/audio/backgroundambienthumm.mp3', (buf) => {
+      this.ambientAudio!.setBuffer(buf);
+      this.ambientAudio!.setLoop(true);
+      this.ambientAudio!.setVolume(this.bgVol * 0.5);
+      if (this.audioStarted && !this.ambientAudio!.isPlaying) this.ambientAudio!.play();
+    });
+    loader.load('/audio/footsteps.mp3', (buf) => {
+      this.footstepAudio!.setBuffer(buf);
+      this.footstepAudio!.setLoop(true);
+      this.footstepAudio!.setVolume(0); // modulated per-frame by the followed agent
+      if (this.audioStarted && !this.footstepAudio!.isPlaying) this.footstepAudio!.play();
+    });
+    loader.load('/audio/monsterclose.mp3', (buf) => {
+      this.monsterAudio!.setBuffer(buf);
+      this.monsterAudio!.setLoop(false);
+      this.monsterAudio!.setVolume(this.sfxVol);
+    });
+    loader.load('/audio/terminalbeeps.mp3', (buf) => this.audioBuffers.set('beep', buf));
+    // any gesture anywhere (incl. the volume sliders) unlocks Web Audio
+    window.addEventListener('pointerdown', () => this.resumeAudio());
+    window.addEventListener('keydown', () => this.resumeAudio());
+  }
+
+  /** Web Audio needs a user gesture; call this from the first pointer input. */
+  private resumeAudio() {
+    if (this.audioStarted) return;
+    this.audioStarted = true;
+    void this.listener?.context.resume();
+    if (this.ambientAudio?.buffer && !this.ambientAudio.isPlaying) this.ambientAudio.play();
+    if (this.footstepAudio?.buffer && !this.footstepAudio.isPlaying) this.footstepAudio.play();
+    this.beepTimer = window.setInterval(() => this.beepTerminals(), 5000);
+  }
+
+  /** every terminal chirps; the positional falloff means you only HEAR the near ones */
+  private beepTerminals() {
+    const beep = this.audioBuffers.get('beep');
+    if (!beep) return;
+    for (const obj of this.evidence.values()) {
+      const pa = obj.userData.beaconAudio as THREE.PositionalAudio | undefined;
+      if (!pa) continue;
+      if (!pa.buffer) pa.setBuffer(beep);
+      if (pa.isPlaying) pa.stop();
+      pa.play();
+    }
+  }
+
+  setBgVol(v: number) {
+    this.bgVol = Math.max(0, Math.min(1, v));
+    this.ambientAudio?.setVolume(this.bgVol * 0.5);
+  }
+  setSfxVol(v: number) {
+    this.sfxVol = Math.max(0, Math.min(1, v));
+    this.monsterAudio?.setVolume(this.sfxVol);
+    for (const obj of this.evidence.values()) {
+      (obj.userData.beaconAudio as THREE.PositionalAudio | undefined)?.setVolume(this.sfxVol);
+    }
   }
 
   private disposeChunkMesh(key: string) {
@@ -659,6 +741,19 @@ export class ThreeWorld {
         obj.userData.beaconLight = glow;
         obj.userData.beaconMat = (obj as THREE.Mesh).material;
         obj.userData.beaconPhase = Math.random() * 6.28;
+        // spatial beep — only audible when the camera (listener) is near it
+        if (this.listener) {
+          const pa = new THREE.PositionalAudio(this.listener);
+          pa.setRefDistance(2.2);
+          pa.setMaxDistance(8);
+          pa.setRolloffFactor(2.5);
+          pa.setDistanceModel('linear');
+          pa.setVolume(this.sfxVol);
+          const beep = this.audioBuffers.get('beep');
+          if (beep) pa.setBuffer(beep);
+          obj.add(pa);
+          obj.userData.beaconAudio = pa;
+        }
       }
     }
     obj.position.set(e.x + 0.5, 0.02, e.y + 0.5);
@@ -688,6 +783,7 @@ export class ThreeWorld {
     let lx = 0;
     let ly = 0;
     el.addEventListener('pointerdown', (e) => {
+      this.resumeAudio(); // first gesture unlocks Web Audio
       dragging = true;
       moved = 0;
       lx = e.clientX;
@@ -897,6 +993,31 @@ export class ThreeWorld {
       const op = 0.32 + 0.28 * Math.abs(Math.sin(this.chaosPhase * 7)) + (jitter ? 0.15 : 0);
       for (const m of this.chaosMats) m.opacity = Math.min(0.7, op);
       this.chaos.rotation.y += dt * 0.6; // slowly turns, never settling
+    }
+
+    // ---- audio: footsteps of the followed agent + monster-proximity sting ----
+    if (this.audioStarted) {
+      const fo = this.agents.get(this.followId ?? '');
+      if (this.footstepAudio?.buffer) {
+        const moving = !!fo && fo.state !== 'dead' && (fo.state === 'moving' || fo.queue.length > 0 || fo.speed > 0.25);
+        if (moving) {
+          this.footstepAudio.setPlaybackRate(fo!.speed > 1.75 ? 1.7 : 1.05); // faster when running
+          this.footstepAudio.setVolume(this.sfxVol * 0.55);
+        } else {
+          this.footstepAudio.setVolume(0);
+        }
+      }
+      if (this.monsterAudio?.buffer && fo) {
+        const d = Math.hypot(this.monsterGX - fo.gx, this.monsterGY - fo.gy);
+        if (d < 8 && !this.monsterNear) {
+          this.monsterNear = true; // fires once as it closes in
+          if (this.monsterAudio.isPlaying) this.monsterAudio.stop();
+          this.monsterAudio.setVolume(this.sfxVol);
+          this.monsterAudio.play();
+        } else if (d > 13) {
+          this.monsterNear = false;
+        }
+      }
     }
 
     // camera is always locked to an agent; default to the first if none chosen
