@@ -871,15 +871,26 @@ export class ThreeWorld {
       }
     }
 
-    // ---- terminal beacons: pulse the green pilot light so they're findable ----
+    // ---- terminal beacons: pulse the green glow; but only the few NEAREST
+    // terminals get a real point light (lots of live lights was causing lag).
+    // The emissive flash is free and stays on for all of them.
+    const beacons: { obj: THREE.Object3D; d: number }[] = [];
     for (const obj of this.evidence.values()) {
       const glow = obj.userData.beaconLight as THREE.PointLight | undefined;
       if (!glow) continue;
       const ph = obj.userData.beaconPhase as number;
       const blink = 0.35 + 0.65 * Math.pow(Math.max(0, Math.sin(nowMs * 0.004 + ph)), 3);
-      glow.intensity = 1.2 + 5 * blink;
       const mat = obj.userData.beaconMat as THREE.MeshStandardMaterial;
       mat.emissiveIntensity = 0.4 + 1.4 * blink;
+      glow.userData.blink = blink;
+      beacons.push({ obj, d: (obj.position.x - this.target.x) ** 2 + (obj.position.z - this.target.z) ** 2 });
+    }
+    beacons.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < beacons.length; i++) {
+      const glow = beacons[i]!.obj.userData.beaconLight as THREE.PointLight;
+      const near = i < 3;
+      glow.visible = near;
+      if (near) glow.intensity = 1.2 + 5 * (glow.userData.blink as number);
     }
 
     // ---- chaos: glitching, see-through body ----

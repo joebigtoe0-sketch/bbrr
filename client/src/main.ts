@@ -55,9 +55,10 @@ world.onTuneIn = (id) => tuneIn(id);
 world.onEvidenceClick = (id) => {
   const e = store.evidence.get(id);
   if (!e) return;
-  if (e.kind === 'crt') {
+  if (e.kind === 'crt' || e.kind === 'anomaly') {
     const lines = (e.meta?.lines as string[] | undefined) ?? [];
-    openReader('TERMINAL // internal log', lines.length ? lines : ['[the cursor blinks]']);
+    const id = e.id.slice(0, 4).toUpperCase();
+    openReader(`◉ TERMINAL // node ${id}`, lines.length ? lines : ['[no entries — the cursor blinks]'], { terminal: true });
   } else {
     openReader(e.kind.toUpperCase(), [e.text ?? '(blank)', ...(e.authorName ? ['', `— ${e.authorName}`] : [])]);
   }

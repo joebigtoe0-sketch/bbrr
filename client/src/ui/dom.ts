@@ -102,18 +102,27 @@ export function initSpawnModal(onSpawned: (agentId: string) => void) {
 // ---------- reader panel ----------
 let typeTimer: ReturnType<typeof setInterval> | null = null;
 
-export function openReader(title: string, lines: string[], typeOn = true) {
+export function openReader(
+  title: string,
+  lines: string[],
+  opts: { typeOn?: boolean; terminal?: boolean } = {},
+) {
+  const typeOn = opts.typeOn ?? true;
   const panel = $('reader');
   const linesEl = $('reader-lines');
+  panel.classList.toggle('terminal', !!opts.terminal);
   $('reader-title').textContent = title;
   panel.classList.add('open');
   if (typeTimer) clearInterval(typeTimer);
+  // terminal reads get a little boot chrome, like a shell printing its buffer
+  const full = opts.terminal
+    ? ['BACKROOMS-OS 0.9.4  ::  secure shell', 'reading /var/log/terminal.buffer …', '', ...lines].join('\n')
+    : lines.join('\n');
   if (!typeOn) {
-    linesEl.textContent = lines.join('\n');
+    linesEl.textContent = full;
     return;
   }
   linesEl.textContent = '';
-  const full = lines.join('\n');
   let i = 0;
   typeTimer = setInterval(() => {
     i += 3;
@@ -122,7 +131,7 @@ export function openReader(title: string, lines: string[], typeOn = true) {
       linesEl.textContent = full;
       if (typeTimer) clearInterval(typeTimer);
     }
-  }, 16);
+  }, 12);
 }
 
 export function closeReader() {
