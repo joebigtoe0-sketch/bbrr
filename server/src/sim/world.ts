@@ -77,6 +77,7 @@ export class World {
 
   private pendingRemovals: string[] = [];
   private deadLinger = new Map<string, number>(); // agentId -> tick to remove at
+  private recentVoiceTimes: number[] = []; // epoch ms of recent inbound tweets
   private pendingSpeech: { agentId: string; text: string }[] = [];
   /** powered sectors decay: chunkKey -> epoch ms when the light dies */
   private litExpiry = new Map<string, number>();
@@ -267,6 +268,7 @@ export class World {
       spawnedAtMs: now,
       restUntil: 0,
       interactUntil: 0,
+      nextWanderAt: 0,
       monsterVisible: false,
       deceiving: false,
       battery: 100,
@@ -551,10 +553,24 @@ export class World {
     const clean = text.replace(/\s+/g, ' ').trim().slice(0, 240);
     if (!clean) return;
     const who = handle.replace(/^@/, '').trim() || 'someone';
+    const now = Date.now();
+    // how loud is the outside right now? many voices in a short window press harder
+    this.recentVoiceTimes = this.recentVoiceTimes.filter((t) => now - t < 120000);
+    this.recentVoiceTimes.push(now);
+    const pressure = this.recentVoiceTimes.length; // voices in the last 2 min
     for (const a of this.agents.values()) {
       if (a.state === 'dead') continue;
       a.heardSinceLastDecision.push(`a voice from beyond the walls (@${who}): "${clean}"`);
-      a.attention = Math.min(100, a.attention + 1);
+      a.attention = Math.min(100, a.attention + 3);
+      // it lingers into later decisions, not just the next one
+      this.addMemoryNote(a, `A voice from beyond the walls said: "${clean}"`);
+      // when the voices pile up they start to get under everyone's skin
+      if (pressure >= 3) {
+        a.stress = Math.min(100, a.stress + Math.min(12, pressure * 2));
+        if (pressure >= 5) {
+          this.addMemoryNote(a, "The voices from beyond won't stop. They keep saying the same things.");
+        }
+      }
     }
     this.bus.emit('incoming_tweet', { handle: who, text: clean });
   }
@@ -774,6 +790,7 @@ export class World {
         spawnedAtMs: row.created_at,
         restUntil: 0,
         interactUntil: 0,
+        nextWanderAt: 0,
         monsterVisible: false,
         deceiving: false,
         battery: row.battery ?? 100,

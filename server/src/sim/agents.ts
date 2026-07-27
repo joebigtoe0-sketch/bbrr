@@ -40,6 +40,8 @@ export interface AgentRuntime {
   spawnedAtMs: number;
   restUntil: number;
   interactUntil: number;
+  /** epoch ms the next ambient wander may start (fills the gap between decisions) */
+  nextWanderAt: number;
   monsterVisible: boolean;
   deceiving: boolean;
   battery: number;
@@ -213,7 +215,7 @@ export function executeDecision(world: World, a: AgentRuntime, d: BrainDecision)
     }
     case 'rest': {
       a.state = 'idle';
-      a.restUntil = now + 20000;
+      a.restUntil = now + 8000; // a short breather, not a nap
       a.lastActionResult = 'you rested for a while';
       break;
     }
@@ -371,6 +373,7 @@ function onArrival(world: World, a: AgentRuntime) {
   const act = a.currentAction;
   a.path = null;
   a.state = 'idle';
+  a.currentAction = null; // consumed on arrival — ambient wanders must not re-fire it
   if (!act) return;
   const now = Date.now();
   if (act.type === 'use_terminal') {
@@ -471,6 +474,33 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
         remaining = 0;
       }
     }
+  }
+
+  // ambient "idle walking": rather than freeze between decisions (up to ~15s),
+  // agents amble a few tiles. Keeps them alive-looking without extra brain calls.
+  // Resting, fleeing, following, interacting and monster-alert states opt out.
+  if (
+    a.state === 'idle' &&
+    !a.path &&
+    !a.followTargetId &&
+    !a.monsterVisible &&
+    now >= a.restUntil &&
+    now >= a.fleeingUntil &&
+    now >= a.nextWanderAt
+  ) {
+    a.nextWanderAt = now + 900 + Math.random() * 1800; // amble, brief pause, amble
+    const gx = Math.floor(a.x);
+    const gy = Math.floor(a.y);
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)]!;
+    const steps = 2 + Math.floor(Math.random() * 3); // 2-4 tiles
+    const spot = world.maze.nearestWalkable(gx + dx! * steps, gy + dy! * steps, 3);
+    if (spot && (spot.x !== gx || spot.y !== gy)) startPath(world, a, spot.x, spot.y);
   }
 
   // stress integration: the whole maze is dark now — their flashlights keep
