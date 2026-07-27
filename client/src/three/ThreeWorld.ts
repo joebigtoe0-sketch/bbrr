@@ -427,7 +427,10 @@ export class ThreeWorld {
 
   private initAudio() {
     this.listener = new THREE.AudioListener();
-    this.cam.add(this.listener);
+    // the ortho camera sits ~60 units back, so a camera-parented listener would
+    // hear every terminal as "far". Put the listener in the scene at the followed
+    // agent instead (moved each frame), so spatial falloff is measured from them.
+    this.scene.add(this.listener);
     const loader = new THREE.AudioLoader();
     this.ambientAudio = new THREE.Audio(this.listener);
     this.footstepAudio = new THREE.Audio(this.listener);
@@ -744,9 +747,9 @@ export class ThreeWorld {
         // spatial beep — only audible when the camera (listener) is near it
         if (this.listener) {
           const pa = new THREE.PositionalAudio(this.listener);
-          pa.setRefDistance(2.2);
-          pa.setMaxDistance(8);
-          pa.setRolloffFactor(2.5);
+          pa.setRefDistance(3);
+          pa.setMaxDistance(13);
+          pa.setRolloffFactor(1.4);
           pa.setDistanceModel('linear');
           pa.setVolume(this.sfxVol);
           const beep = this.audioBuffers.get('beep');
@@ -998,6 +1001,8 @@ export class ThreeWorld {
     // ---- audio: footsteps of the followed agent + monster-proximity sting ----
     if (this.audioStarted) {
       const fo = this.agents.get(this.followId ?? '');
+      // keep the listener on the agent we're watching (drives terminal falloff)
+      if (this.listener) this.listener.position.set(this.target.x, 0.8, this.target.z);
       if (this.footstepAudio?.buffer) {
         const moving = !!fo && fo.state !== 'dead' && (fo.state === 'moving' || fo.queue.length > 0 || fo.speed > 0.25);
         if (moving) {

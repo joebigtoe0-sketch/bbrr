@@ -625,6 +625,10 @@ export class World {
       for (let j = i + 1; j < arr.length; j++) {
         const a = arr[i]!;
         const b = arr[j]!;
+        // only separate when BOTH are stationary — otherwise a mover would be
+        // shoved backward and two agents passing in a corridor deadlock. Movers
+        // simply phase through each other and settle apart once they stop.
+        if (a.state === 'moving' || b.state === 'moving') continue;
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         let d = Math.hypot(dx, dy);
