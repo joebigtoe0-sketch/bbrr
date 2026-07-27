@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@backrooms/shared';
 import type { Agent, EvidenceArtifact, MazeChunk } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
@@ -19,9 +21,14 @@ interface ChunkMesh {
   lights: THREE.PointLight[];
 }
 interface AgentObj {
-  sprite: THREE.Mesh;
+  root: THREE.Group; // holds the character model
+  model?: THREE.Object3D;
+  mixer?: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  current: string;
+  idleName: string;
+  hand?: THREE.Object3D;
   spot: THREE.SpotLight;
-  glow: THREE.PointLight;
   target: THREE.Object3D;
   gx: number;
   gy: number;
@@ -29,7 +36,27 @@ interface AgentObj {
   ty: number;
   facing: string;
   battery: number;
+  state: string;
+  speed: number;
+  danceUntil: number;
+  nextDanceCheck: number;
 }
+
+function strHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 0);
+}
+
+const IDLES = ['Idle_3', 'Idle_9'];
+const DANCES = ['Bass_Beats', 'Boom_Dance'];
+/** the model's forward is +Z (south); rotate to face the agent's heading */
+const FACE_ROT: Record<string, number> = {
+  s: 0,
+  n: Math.PI,
+  e: -Math.PI / 2,
+  w: Math.PI / 2,
+};
 
 const VIEW_SIZE = 14; // world units visible vertically at zoom 1
 
@@ -54,6 +81,9 @@ export class ThreeWorld {
   private texCache = new Map<string, THREE.Texture>();
   private raycaster = new THREE.Raycaster();
   private billboards = new Set<THREE.Mesh>();
+  private npcTemplate?: THREE.Object3D;
+  private npcClips: THREE.AnimationClip[] = [];
+  private lastFrameT = 0;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -88,6 +118,7 @@ export class ThreeWorld {
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    this.loadNpcModel();
     this.wireStore();
     this.wireInput();
     this.conn.onOpen = () => {};
@@ -217,8 +248,7 @@ export class ThreeWorld {
     const s = this.store;
     s.onSnapshot = () => {
       for (const a of this.agents.values()) {
-        this.dropBillboard(a.sprite);
-        this.scene.remove(a.spot, a.target, a.glow);
+        this.scene.remove(a.root, a.spot, a.target);
       }
       this.agents.clear();
       for (const a of s.agents.values()) this.upsertAgent(a);
@@ -238,8 +268,7 @@ export class ThreeWorld {
     s.onAgentRemove = (id) => {
       const a = this.agents.get(id);
       if (a) {
-        this.dropBillboard(a.sprite);
-        this.scene.remove(a.spot, a.target, a.glow);
+        this.scene.remove(a.root, a.spot, a.target);
         this.agents.delete(id);
       }
     };
@@ -366,29 +395,103 @@ export class ThreeWorld {
   private upsertAgent(a: Agent) {
     let o = this.agents.get(a.id);
     if (!o) {
-      const hueCol = new THREE.Color().setHSL(a.hue / 360, 0.55, 0.35).getHex();
-      const sprite = this.makeBillboard(this.agentTexture(a.hue), 0.75, 1.05, { emissive: hueCol });
-      sprite.position.set(a.x, 0, a.y);
-      this.scene.add(sprite);
-      const spot = new THREE.SpotLight(0xffe4ad, 90, 9, Math.PI / 3.4, 0.6, 1.1);
+      const root = new THREE.Group();
+      root.position.set(a.x, 0, a.y);
+      this.scene.add(root);
+      const spot = new THREE.SpotLight(0xffe4ad, 130, 9, Math.PI / 2.7, 0.7, 1.15);
       spot.castShadow = true;
-      spot.shadow.mapSize.set(512, 512);
-      spot.shadow.camera.near = 0.15;
-      spot.shadow.camera.far = 11;
-      spot.shadow.bias = -0.002;
+      spot.shadow.mapSize.set(1024, 1024);
+      spot.shadow.camera.near = 0.1;
+      spot.shadow.camera.far = 12;
+      spot.shadow.bias = -0.0025;
       const target = new THREE.Object3D();
-      // a soft personal pool so light begins right at the agent's feet
-      const glow = new THREE.PointLight(0xffe0a6, 6, 3.2, 1.6);
-      this.scene.add(spot, target, glow);
+      this.scene.add(spot, target);
       spot.target = target;
-      o = { sprite, spot, glow, target, gx: a.x, gy: a.y, tx: a.x, ty: a.y, facing: a.facing, battery: a.battery };
+      o = {
+        root,
+        actions: new Map(),
+        current: '',
+        idleName: IDLES[strHash(a.id) % IDLES.length]!,
+        spot,
+        target,
+        gx: a.x,
+        gy: a.y,
+        tx: a.x,
+        ty: a.y,
+        facing: a.facing,
+        battery: a.battery,
+        state: a.state,
+        speed: 0,
+        danceUntil: 0,
+        nextDanceCheck: 0,
+      };
       this.agents.set(a.id, o);
+      if (this.npcTemplate) this.buildAgentModel(o, a.hue);
     }
     o.tx = a.x;
     o.ty = a.y;
     o.facing = a.facing;
     o.battery = a.battery;
-    if (a.state === 'dead') (o.sprite.material as THREE.MeshStandardMaterial).opacity = 0.4;
+    o.state = a.state;
+    if (a.state === 'dead' && o.model) o.model.visible = true;
+  }
+
+  private loadNpcModel() {
+    new GLTFLoader().load('/sprites/generated/npc.glb', (gltf) => {
+      const box = new THREE.Box3().setFromObject(gltf.scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const s = 1.5 / (size.y || 1.8);
+      gltf.scene.scale.setScalar(s);
+      gltf.scene.position.y = -box.min.y * s;
+      this.npcTemplate = gltf.scene;
+      this.npcClips = gltf.animations;
+      for (const o of this.agents.values()) if (!o.model) this.buildAgentModel(o, 0);
+    });
+  }
+
+  private buildAgentModel(o: AgentObj, hue: number) {
+    if (!this.npcTemplate) return;
+    const model = skeletonClone(this.npcTemplate);
+    const tint = new THREE.Color().setHSL(((((hue % 360) + 360) % 360) / 360), 0.55, 0.62);
+    model.traverse((n) => {
+      const m = n as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        mat.color.multiply(tint);
+        m.material = mat;
+      }
+    });
+    const hand = model.getObjectByName('RightHand') ?? undefined;
+    if (hand) {
+      const fl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 2.2, 8),
+        new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x554400, emissiveIntensity: 0.4 }),
+      );
+      fl.rotation.z = Math.PI / 2;
+      hand.add(fl);
+      o.hand = hand;
+    }
+    o.root.add(model);
+    o.model = model;
+    const mixer = new THREE.AnimationMixer(model);
+    o.mixer = mixer;
+    for (const clip of this.npcClips) o.actions.set(clip.name, mixer.clipAction(clip));
+    this.playAnim(o, o.idleName);
+  }
+
+  private playAnim(o: AgentObj, name: string) {
+    if (o.current === name || !o.actions.has(name)) return;
+    const next = o.actions.get(name)!;
+    const prev = o.current ? o.actions.get(o.current) : undefined;
+    next.reset();
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.fadeIn(0.25);
+    next.play();
+    if (prev) prev.fadeOut(0.25);
+    o.current = name;
   }
 
   private updateMonster() {
@@ -421,7 +524,7 @@ export class ThreeWorld {
       geo.rotateX(-Math.PI / 2);
       obj = new THREE.Mesh(
         geo,
-        new THREE.MeshBasicMaterial({ color: 0xc23b2e, transparent: true, opacity: 0.7 }),
+        new THREE.MeshStandardMaterial({ color: 0xc23b2e, roughness: 1, transparent: true, opacity: 0.85 }),
       );
     } else {
       const url = EVIDENCE_TEX[e.kind];
@@ -484,12 +587,17 @@ export class ThreeWorld {
       -(e.clientY / window.innerHeight) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.cam);
-    // agents first (tune-in)
-    const agentSprites = [...this.agents.entries()].map(([id, o]) => ((o.sprite.userData.id = id), o.sprite));
-    const hitA = this.raycaster.intersectObjects(agentSprites, false)[0];
+    // agents first (tune-in) — mark each agent's root with its id and raycast
+    const roots: THREE.Object3D[] = [];
+    for (const [id, o] of this.agents) {
+      o.root.traverse((n) => (n.userData.agentId = id));
+      roots.push(o.root);
+    }
+    const hitA = this.raycaster.intersectObjects(roots, true)[0];
     if (hitA) {
-      this.onTuneIn?.((hitA.object as THREE.Sprite).userData.id as string);
-      return;
+      let n: THREE.Object3D | null = hitA.object;
+      while (n && !n.userData.agentId) n = n.parent;
+      if (n) { this.onTuneIn?.(n.userData.agentId as string); return; }
     }
     // otherwise the ground point (for chaos steering / evidence)
     const evObjs = [...this.evidence.values()];
@@ -541,21 +649,45 @@ export class ThreeWorld {
   // ---------------- per-frame ----------------
 
   private frame(_t: number) {
-    // interpolate agents + drive their flashlights
+    const dt = this.lastFrameT ? Math.min(0.05, (_t - this.lastFrameT) / 1000) : 0.016;
+    this.lastFrameT = _t;
+    const nowMs = performance.now();
     for (const o of this.agents.values()) {
+      const px = o.gx;
+      const py = o.gy;
       o.gx += (o.tx - o.gx) * 0.2;
       o.gy += (o.ty - o.gy) * 0.2;
-      o.sprite.position.set(o.gx, 0, o.gy);
+      o.speed += (Math.hypot(o.gx - px, o.gy - py) / (dt || 0.016) - o.speed) * 0.3;
+      o.root.position.set(o.gx, 0, o.gy);
+      const wantRot = FACE_ROT[o.facing] ?? 0;
+      let dr = wantRot - o.root.rotation.y;
+      while (dr > Math.PI) dr -= Math.PI * 2;
+      while (dr < -Math.PI) dr += Math.PI * 2;
+      o.root.rotation.y += dr * Math.min(1, dt * 10);
+      let anim: string;
+      if (o.state === 'dead') anim = 'Dead';
+      else if (o.speed > 1.9) anim = 'Running';
+      else if (o.speed > 0.25 || o.state === 'moving') anim = 'Walking';
+      else {
+        if (nowMs > o.nextDanceCheck) {
+          o.nextDanceCheck = nowMs + 12000;
+          if (Math.random() < 0.22) o.danceUntil = nowMs + 6500;
+        }
+        anim = o.danceUntil > nowMs ? DANCES[strHash(o.root.uuid) % DANCES.length]! : o.idleName;
+      }
+      this.playAnim(o, anim);
+      o.mixer?.update(dt);
       const bf = o.battery <= 0 ? 0.28 : 0.4 + 0.6 * (o.battery / 100);
       const fd = FACE[o.facing] ?? [0, 1];
-      // spotlight sits just above the agent, aimed a short way ahead so the
-      // pool starts AT them and reaches forward
-      o.spot.position.set(o.gx, 1.05, o.gy);
-      o.spot.intensity = 105 * bf;
+      const hp = new THREE.Vector3(o.gx, 1.1, o.gy);
+      if (o.hand) {
+        o.hand.getWorldPosition(hp);
+        hp.y = Math.max(0.85, Math.min(1.45, hp.y));
+      }
+      o.spot.position.copy(hp);
+      o.spot.intensity = 135 * bf;
       o.spot.distance = 9 * bf;
-      o.target.position.set(o.gx + fd[0] * 2.2, 0, o.gy + fd[1] * 2.2);
-      o.glow.position.set(o.gx, 0.7, o.gy);
-      o.glow.intensity = 7 * bf;
+      o.target.position.set(o.gx + fd[0] * 1.6, 0.1, o.gy + fd[1] * 1.6);
     }
     // camera is always locked to an agent; default to the first if none chosen
     if (!this.followId || !this.agents.has(this.followId)) {

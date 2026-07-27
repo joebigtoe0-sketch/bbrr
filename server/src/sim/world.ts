@@ -150,6 +150,7 @@ export class World {
     }
     tickMonster(this, dtMs, now);
     tickChaos(this, now, dtMs);
+    this.separateAgents();
 
     if (now - this.lastViralRollAt > 120000) {
       this.lastViralRollAt = now;
@@ -561,6 +562,42 @@ export class World {
     }
     this.maze.growAround(8, 8, 1);
     return this.maze.nearestWalkable(8, 8, 16) ?? { x: 8, y: 8 };
+  }
+
+  /** gently push apart agents that overlap so they never stack on one tile */
+  private separateAgents() {
+    const arr = [...this.agents.values()].filter((a) => a.state !== 'dead');
+    const MIN = 0.62;
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i]!;
+        const b = arr[j]!;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= MIN) continue;
+        if (d < 1e-4) {
+          dx = Math.random() - 0.5;
+          dy = Math.random() - 0.5;
+          d = Math.hypot(dx, dy) || 1;
+        }
+        const push = (MIN - d) / 2;
+        const ux = dx / d;
+        const uy = dy / d;
+        const ax = a.x - ux * push;
+        const ay = a.y - uy * push;
+        const bx = b.x + ux * push;
+        const by = b.y + uy * push;
+        if (this.maze.isWalkable(Math.floor(ax), Math.floor(ay))) {
+          a.x = ax;
+          a.y = ay;
+        }
+        if (this.maze.isWalkable(Math.floor(bx), Math.floor(by))) {
+          b.x = bx;
+          b.y = by;
+        }
+      }
+    }
   }
 
   activityCentroid(): { x: number; y: number } {
