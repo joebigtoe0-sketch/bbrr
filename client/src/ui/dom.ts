@@ -137,7 +137,8 @@ export function initReader() {
 // ---------- right panel: LOG / TWEETS / RECORDS ----------
 type RightTab = 'log' | 'tweets' | 'records';
 let rightTab: RightTab | null = null;
-const logEntries: { t: string; text: string; cls: string }[] = [];
+interface LogEntry { t: string; text: string; cls: string; name?: string; color?: string }
+const logEntries: LogEntry[] = [];
 
 export function initRightPanel() {
   for (const tab of ['log', 'tweets', 'records'] as RightTab[]) {
@@ -180,16 +181,21 @@ function renderRight() {
 }
 
 /** everything that happens in the maze, newest first */
-export function appendLog(text: string, cls = '') {
+export function appendLog(text: string, cls = '', opts?: { name?: string; color?: string }) {
   const t = new Date().toLocaleTimeString([], { hour12: false });
-  logEntries.unshift({ t, text, cls });
-  if (logEntries.length > 250) logEntries.pop();
+  logEntries.unshift({ t, text, cls, name: opts?.name, color: opts?.color });
+  if (logEntries.length > 300) logEntries.pop();
   if (rightTab === 'log') renderLog();
 }
 
 function renderLog() {
   $('right-content').innerHTML = logEntries
-    .map((e) => `<div class="log-line ${e.cls}"><span class="t">${e.t}</span>${esc(e.text)}</div>`)
+    .map((e) => {
+      const nm = e.name
+        ? `<span class="nm" style="color:${e.color ?? '#c9b458'}">${esc(e.name)}</span> `
+        : '';
+      return `<div class="log-line ${e.cls}"><span class="t">${e.t}</span>${nm}${esc(e.text)}</div>`;
+    })
     .join('');
 }
 

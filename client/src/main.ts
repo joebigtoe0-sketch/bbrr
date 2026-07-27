@@ -25,6 +25,7 @@ document.body.appendChild(overlay);
 // ---------------- sidebar + panels ----------------
 initReader();
 initRightPanel();
+(document.getElementById('btn-log') as HTMLButtonElement).click(); // LOG open by default
 refreshDeaths();
 setInterval(refreshDeaths, 30000);
 
@@ -73,7 +74,16 @@ const monMarker = document.createElement('div');
 monMarker.textContent = '⚠';
 monMarker.style.cssText = 'position:absolute;color:#ff3a2a;font:bold 18px Consolas,monospace;text-shadow:0 0 6px #000;transform:translate(-50%,-100%);display:none';
 overlay.appendChild(monMarker);
+// name colour = the agent's hue, so the LOG is scannable by who
+function agentColor(id: string): string {
+  const a = store.agents.get(id);
+  return a ? `hsl(${a.hue}, 65%, 68%)` : '#c9b458';
+}
 store.onThought = (t) => {
+  // every thought lands in the LOG (whole-maze monologue), labelled + coloured
+  const who = store.agents.get(t.agentId)?.name ?? '???';
+  appendLog(t.text, `thought ${t.mindState}`, { name: `${who} thinks:`, color: agentColor(t.agentId) });
+  // floating in-world bubble stays exclusive to the agent we're tuned into
   if (t.agentId !== tunedId) return;
   const el = document.createElement('div');
   el.textContent = t.text;
@@ -84,7 +94,7 @@ store.onThought = (t) => {
 };
 store.onSpeech = (agentId, text) => {
   const who = store.agents.get(agentId)?.name ?? '???';
-  appendLog(`${who}: "${text}"`, 'speech');
+  appendLog(`"${text}"`, 'speech', { name: `${who}:`, color: agentColor(agentId) });
 };
 
 // ---------------- auto-director ----------------
@@ -93,6 +103,7 @@ store.onSpeech = (agentId, text) => {
 // timer with hysteresis so it doesn't flicker between agents.
 let directorOn = false;
 let lastDirectorSwitch = 0;
+let deathHoldUntil = 0; // stay on a dying agent this long so the death is seen
 const dirBtn = document.getElementById('director') as HTMLButtonElement;
 dirBtn.onclick = () => {
   directorOn = !directorOn;
@@ -114,6 +125,7 @@ function agentDrama(a: Agent): number {
 function pickDirectorTarget(force: boolean) {
   if (!directorOn) return;
   const now = performance.now();
+  if (now < deathHoldUntil) return; // let the current death play out
   if (!force && now - lastDirectorSwitch < 4500) return;
   let best: string | null = null;
   let bestScore = -1;
@@ -137,7 +149,10 @@ store.onWorldEvent = (e: WorldEvent) => {
   const p = e.payload as Record<string, string>;
   switch (e.type) {
     case 'agent_spawned': appendLog(`+ ${p.name} entered the maze (${p.objective})`); break;
-    case 'agent_died': appendLog(`☠ ${p.name} — ${p.cause}`, 'death'); toast(`☠ ${p.name}`); break;
+    case 'agent_died':
+      appendLog(`☠ ${p.name} — ${p.cause}`, 'death'); toast(`☠ ${p.name}`);
+      if (p.agentId === tunedId) deathHoldUntil = performance.now() + 3200;
+      break;
     case 'hunt_started':
       appendLog(`⚠ the thing is hunting ${p.name}`, 'hunt'); toast(`⚠ hunting ${p.name}`);
       if (directorOn) {

@@ -41,10 +41,14 @@ import {
 import { type ChaosRuntime, createChaos, tickChaos } from './chaos.js';
 import { rollViral } from './social.js';
 import { rngFor, randInt, hashStr, pick } from './rng.js';
+import { hasLineOfSight } from './pathfinding.js';
 import { ChaosTextQueue } from '../brain/chaosText.js';
 import { writeCaseFile } from '../brain/caseFile.js';
 
 type Delta = Omit<z.infer<typeof DeltaMsg>, 't'>;
+
+/** keep a corpse in the world this long after death before clearing it */
+const DEATH_LINGER_TICKS = Math.round(3000 / SIM_TICK_MS);
 
 const NAME_POOL = [
   'Vera', 'Kaz', 'Moth', 'Ida', 'Sol', 'Rune', 'Pell', 'Nyx', 'Aster', 'Grey',
@@ -72,6 +76,7 @@ export class World {
   afterTick: () => void = () => {};
 
   private pendingRemovals: string[] = [];
+  private deadLinger = new Map<string, number>(); // agentId -> tick to remove at
   private pendingSpeech: { agentId: string; text: string }[] = [];
   /** powered sectors decay: chunkKey -> epoch ms when the light dies */
   private litExpiry = new Map<string, number>();
@@ -151,6 +156,14 @@ export class World {
     tickMonster(this, dtMs, now);
     tickChaos(this, now, dtMs);
     this.separateAgents();
+
+    // clear corpses whose linger time has elapsed
+    for (const [id, dueTick] of this.deadLinger) {
+      if (this.tick >= dueTick) {
+        this.pendingRemovals.push(id);
+        this.deadLinger.delete(id);
+      }
+    }
 
     if (now - this.lastViralRollAt > 120000) {
       this.lastViralRollAt = now;
@@ -321,7 +334,9 @@ export class World {
     agentRepo.upsert(row);
     this.bus.emit('agent_died', { agentId: a.id, name: a.name, cause, x: a.x, y: a.y });
     void writeCaseFile(a, cause); // fire-and-forget: the archive writes itself
-    this.pendingRemovals.push(a.id);
+    // linger as a corpse for a few seconds so spectators see the death animation
+    // and can process what happened before the body is cleared from the world
+    this.deadLinger.set(a.id, this.tick + DEATH_LINGER_TICKS);
   }
 
   // ---------- world event mutators ----------
@@ -503,7 +518,11 @@ export class World {
     this.pendingSpeech.push({ agentId: a.id, text });
     for (const other of this.agents.values()) {
       if (other.id === a.id || other.state === 'dead') continue;
-      if (Math.hypot(other.x - a.x, other.y - a.y) <= 8) {
+      // voices don't carry through walls — need range AND line of sight
+      if (
+        Math.hypot(other.x - a.x, other.y - a.y) <= 8 &&
+        hasLineOfSight(a.x, a.y, other.x, other.y, this.maze.canStep)
+      ) {
         const directed = toAgentName && other.name.toLowerCase() === toAgentName.toLowerCase();
         other.heardSinceLastDecision.push(`${a.name}${directed ? ' (to you)' : ''}: "${text}"`);
         this.addMemoryNote(other, `${a.name} said: "${text}"`);

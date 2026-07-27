@@ -46,12 +46,13 @@ export class WsHub {
       return anchors;
     };
 
+    // every thought goes to every spectator now — the LOG shows the whole maze's
+    // inner monologue. (Floating in-world thought bubbles are still gated to the
+    // tuned agent on the client.)
     world.onThought = (thought) => {
       const msg = JSON.stringify({ t: 'thought', thought } satisfies ServerMsg);
       for (const c of this.clients) {
-        if (c.tunedAgentId === thought.agentId && c.ws.readyState === WebSocket.OPEN) {
-          c.ws.send(msg);
-        }
+        if (c.ws.readyState === WebSocket.OPEN) c.ws.send(msg);
       }
     };
 

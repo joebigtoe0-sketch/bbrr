@@ -1,4 +1,5 @@
 import { chunkKey, tileToChunk } from '@backrooms/shared';
+import { hasLineOfSight } from '../sim/pathfinding.js';
 import type { World } from '../sim/world.js';
 import type { AgentRuntime } from '../sim/agents.js';
 import type { Observation } from './brain.js';
@@ -112,10 +113,12 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
     }
   }
 
+  // agents only perceive others they can actually SEE — in range and with a
+  // clear line of sight. No more "I should ask Rune" when Rune is five walls away.
   const nearbyAgents = [...world.agents.values()]
     .filter((o) => o.id !== a.id && o.state !== 'dead')
     .map((o) => ({ o, d: Math.hypot(o.x - a.x, o.y - a.y) }))
-    .filter(({ d }) => d <= 9)
+    .filter(({ o, d }) => d <= 9 && hasLineOfSight(a.x, a.y, o.x, o.y, world.maze.canStep))
     .sort((p, q) => p.d - q.d)
     .slice(0, 4)
     .map(({ o, d }) => ({ name: o.name, distance: Math.round(d), lastSaid: o.lastSaid }));

@@ -487,7 +487,7 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
   // sectors. energy: reserves; rest recovers, sprinting burns.
   const inPoweredChunk = chunk?.lightsOn === true;
   if (inPoweredChunk) a.battery = Math.min(100, a.battery + 6 * dt);
-  else a.battery = Math.max(0, a.battery - (100 / 1200) * dt);
+  else a.battery = Math.max(0, a.battery - (100 / 2400) * dt); // ~40min per charge
   a.energy = Math.max(0, a.energy - (100 / 2400) * dt);
   if (resting) a.energy = Math.min(100, a.energy + 2.5 * dt);
   if (a.battery <= 12 && !inPoweredChunk) a.stress = Math.min(100, a.stress + 0.35 * dt);

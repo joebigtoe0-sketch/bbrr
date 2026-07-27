@@ -75,7 +75,11 @@ export class ThreeWorld {
   private agents = new Map<string, AgentObj>();
   private evidence = new Map<string, THREE.Object3D>();
   private monster = new THREE.Group();
-  private chaos!: THREE.Mesh;
+  private chaos = new THREE.Group();
+  private chaosModel?: THREE.Object3D;
+  private chaosMixer?: THREE.AnimationMixer;
+  private chaosMats: THREE.MeshStandardMaterial[] = [];
+  private chaosPhase = 0;
 
   private floorTex!: THREE.Texture;
   private wallMat!: THREE.MeshStandardMaterial;
@@ -119,7 +123,6 @@ export class ThreeWorld {
     this.buildMaterials();
     this.monster.visible = false;
     this.scene.add(this.monster);
-    this.chaos = this.makeBillboard(this.chaosTexture(), 1.0, 1.6, { emissive: 0x6a1a6a });
     this.chaos.visible = false;
     this.scene.add(this.chaos);
 
@@ -441,11 +444,11 @@ export class ThreeWorld {
       const root = new THREE.Group();
       root.position.set(a.x, 0, a.y);
       this.scene.add(root);
-      const spot = new THREE.SpotLight(0xffe4ad, 130, 9, Math.PI / 3.6, 0.6, 1.15);
+      const spot = new THREE.SpotLight(0xffe4ad, 150, 15, Math.PI / 3.8, 0.55, 1.1);
       spot.castShadow = false;
       spot.shadow.mapSize.set(1024, 1024);
       spot.shadow.camera.near = 0.1;
-      spot.shadow.camera.far = 12;
+      spot.shadow.camera.far = 18;
       spot.shadow.bias = -0.0025;
       const target = new THREE.Object3D();
       this.scene.add(spot, target);
@@ -495,7 +498,35 @@ export class ThreeWorld {
       this.npcTemplate = gltf.scene;
       this.npcClips = gltf.animations;
       for (const o of this.agents.values()) if (!o.model) this.buildAgentModel(o, 0);
+      this.buildChaosModel();
     });
+  }
+
+  /** the chaos: an npc-shaped body, but glitching and see-through (a wrong thing) */
+  private buildChaosModel() {
+    if (!this.npcTemplate || this.chaosModel) return;
+    const model = skeletonClone(this.npcTemplate);
+    this.chaosMats = [];
+    model.traverse((n) => {
+      const m = n as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = false;
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        mat.transparent = true;
+        mat.opacity = 0.5;
+        mat.color.setHex(0x8a2f90);
+        mat.emissive = new THREE.Color(0xd026c9);
+        mat.emissiveIntensity = 0.6;
+        mat.depthWrite = false;
+        m.material = mat;
+        this.chaosMats.push(mat);
+      }
+    });
+    this.chaos.add(model);
+    this.chaosModel = model;
+    this.chaosMixer = new THREE.AnimationMixer(model);
+    const idle = this.npcClips.find((c) => c.name === IDLES[0]) ?? this.npcClips[0];
+    if (idle) this.chaosMixer.clipAction(idle).play();
   }
 
   private loadMonsterModel() {
@@ -549,24 +580,17 @@ export class ThreeWorld {
         m.material = mat;
       }
     });
-    const hand = model.getObjectByName('RightHand') ?? undefined;
-    if (hand) {
-      // a small handheld torch. bone scale is unknown, so compensate with the
-      // hand's world scale to render it at a real-world size (~0.3 long) — the
-      // old 2.2-long cylinder was poking clean through walls.
-      hand.updateWorldMatrix(true, false);
-      const ws = new THREE.Vector3();
-      hand.getWorldScale(ws);
-      const inv = 1 / (ws.x || 1);
-      const fl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.045, 0.05, 0.3, 8),
-        new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x554400, emissiveIntensity: 0.4 }),
-      );
-      fl.scale.setScalar(inv);
-      fl.rotation.z = Math.PI / 2;
-      hand.add(fl);
-      o.hand = hand;
-    }
+    // a small handheld torch. Parented to the (unscaled) root at roughly hand
+    // height and pointing forward-and-down, so it reads as held but can never
+    // clip through the hand mesh the way the bone-parented prop did. The root
+    // rotates with the agent's facing, so it always points where they walk.
+    const fl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.055, 0.32, 8),
+      new THREE.MeshStandardMaterial({ color: 0x1c1c1c, emissive: 0x6a5410, emissiveIntensity: 0.5 }),
+    );
+    fl.position.set(0.17, 0.58, 0.18);
+    fl.rotation.x = Math.PI / 2 + 0.4; // point forward, tipped down
+    o.root.add(fl);
     o.root.add(model);
     o.model = model;
     const mixer = new THREE.AnimationMixer(model);
@@ -582,6 +606,14 @@ export class ThreeWorld {
     next.reset();
     next.enabled = true;
     next.setEffectiveWeight(1);
+    // death plays once and holds on the last frame (a body, not a loop)
+    if (name === 'Dead') {
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+    } else {
+      next.setLoop(THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = false;
+    }
     next.fadeIn(0.25);
     next.play();
     if (prev) prev.fadeOut(0.25);
@@ -760,8 +792,8 @@ export class ThreeWorld {
       const inst = Math.hypot(o.gx - px, o.gy - py) / (dt || 0.016);
       o.speed += (inst - o.speed) * 0.25;
       // only the followed agent casts flashlight shadows (keeps the framerate up)
-      const wantShadow = o === this.agents.get(this.followId ?? '');
-      if (o.spot.castShadow !== wantShadow) o.spot.castShadow = wantShadow;
+      const followed = o === this.agents.get(this.followId ?? '');
+      if (o.spot.castShadow !== followed) o.spot.castShadow = followed;
       o.root.position.set(o.gx, 0, o.gy);
       const wantRot = FACE_ROT[o.facing] ?? 0;
       let dr = wantRot - o.root.rotation.y;
@@ -782,15 +814,20 @@ export class ThreeWorld {
       }
       this.playAnim(o, anim);
       o.mixer?.update(dt);
-      const bf = o.battery <= 0 ? 0.28 : 0.4 + 0.6 * (o.battery / 100);
+      const bf = o.battery <= 0 ? 0.3 : 0.45 + 0.55 * (o.battery / 100);
       const fd = FACE[o.facing] ?? [0, 1];
       // anchor the beam to the BODY CENTRE (always >=0.5 tiles from any wall),
       // nudged a little forward — never the hand's swinging world position, which
-      // could cross to the far side of a thin wall when the agent hugs it.
-      o.spot.position.set(o.gx + fd[0] * 0.18, 1.15, o.gy + fd[1] * 0.18);
-      o.spot.intensity = 135 * bf;
-      o.spot.distance = 9 * bf;
-      o.target.position.set(o.gx + fd[0] * 1.6, 0.12, o.gy + fd[1] * 1.6);
+      // could cross to the far side of a thin wall when the agent hugs it. Kept
+      // LOW (below the wall tops) so the cone can't skim over walls into the next
+      // room; the shadow map then contains it to the corridor the agent is in.
+      o.spot.position.set(o.gx + fd[0] * 0.18, 0.82, o.gy + fd[1] * 0.18);
+      // the followed agent (whose light is shadow-contained) gets the big reach;
+      // others get a short, dim beam so their un-shadowed light barely leaks
+      const reach = followed ? 15 : 6.5;
+      o.spot.intensity = (followed ? 165 : 95) * bf;
+      o.spot.distance = reach * bf;
+      o.target.position.set(o.gx + fd[0] * (reach * 0.2), 0.05, o.gy + fd[1] * (reach * 0.2));
     }
     // ---- monster: smooth move + procedural creature animation ----
     {
@@ -819,6 +856,20 @@ export class ThreeWorld {
             this.monsterLegRest[i]! + Math.sin(this.monsterPhase + i * Math.PI) * amp;
         }
       }
+    }
+
+    // ---- chaos: glitching, see-through body ----
+    if (this.chaos.visible && this.chaosModel) {
+      this.chaosMixer?.update(dt);
+      this.chaosPhase += dt;
+      // datamosh jitter: snap-offset the body and flicker its opacity
+      const jitter = Math.random() < 0.35;
+      this.chaosModel.position.x = jitter ? (Math.random() - 0.5) * 0.18 : 0;
+      this.chaosModel.position.z = jitter ? (Math.random() - 0.5) * 0.18 : 0;
+      this.chaosModel.scale.y = jitter ? 1 + (Math.random() - 0.5) * 0.25 : 1;
+      const op = 0.32 + 0.28 * Math.abs(Math.sin(this.chaosPhase * 7)) + (jitter ? 0.15 : 0);
+      for (const m of this.chaosMats) m.opacity = Math.min(0.7, op);
+      this.chaos.rotation.y += dt * 0.6; // slowly turns, never settling
     }
 
     // camera is always locked to an agent; default to the first if none chosen

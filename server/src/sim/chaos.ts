@@ -130,13 +130,22 @@ export function actChaos(
 ) {
   const c = world.chaosRt;
   if (c.possessedBy !== clientId || !c.placed) return;
-  const gx = Math.floor(c.x);
-  const gy = Math.floor(c.y);
-  const tick = world.tick;
   c.visible = true;
   c.actUntil = Math.max(c.actUntil, now + 1500);
   c.dirty = true;
+  performChaosAct(world, kind, text);
+  // one act per possession — acting ends the session immediately
+  releaseChaos(world, clientId, now);
+}
 
+type ChaosKind = 'sign' | 'note' | 'lock' | 'terminal' | 'graffiti';
+
+/** the actual mischief, shared by possession and the autonomous scheduler */
+function performChaosAct(world: World, kind: ChaosKind, text: string | undefined) {
+  const c = world.chaosRt;
+  const gx = Math.floor(c.x);
+  const gy = Math.floor(c.y);
+  const tick = world.tick;
   switch (kind) {
     case 'sign':
       world.evidence.create('sign', gx, gy, tick, {
@@ -179,8 +188,6 @@ export function actChaos(
       break;
     }
   }
-  // one act per possession — acting ends the session immediately
-  releaseChaos(world, clientId, now);
 }
 
 // ---------------- per-tick ----------------
@@ -219,9 +226,35 @@ export function tickChaos(world: World, now: number, dtMs: number) {
     }
   }
 
-  // autonomous chaos is disabled — the thing only exists when a watcher
-  // possesses it. handle its fade-out and idle otherwise.
-  if (c.visible && now >= c.actUntil) {
+  // ---- autonomous mischief (when nobody's possessing it) ----
+  // every so often it materialises near someone, defaces something, then fades.
+  if (now >= c.cooldownUntil && now >= c.nextActAt) {
+    const targets = [...world.agents.values()].filter((a) => a.state !== 'dead');
+    if (targets.length === 0) {
+      c.nextActAt = now + 20000;
+    } else {
+      const a = targets[Math.floor(Math.random() * targets.length)]!;
+      const ox = Math.floor(a.x + (Math.random() - 0.5) * 10);
+      const oy = Math.floor(a.y + (Math.random() - 0.5) * 10);
+      const spot = world.maze.nearestWalkable(ox, oy, 8);
+      if (spot) {
+        c.x = spot.x + 0.5;
+        c.y = spot.y + 0.5;
+        c.placed = true;
+        c.visible = true;
+        c.dirty = true;
+        const kinds: ChaosKind[] = ['sign', 'note', 'note', 'graffiti', 'graffiti', 'terminal', 'lock'];
+        performChaosAct(world, kinds[Math.floor(Math.random() * kinds.length)]!, undefined);
+        c.actUntil = now + 4000; // linger a few seconds, then vanish
+        c.nextActAt = now + 45000 + Math.random() * 45000; // 45-90s between visits
+      } else {
+        c.nextActAt = now + 15000;
+      }
+    }
+  }
+
+  // fade the body out once its lingering time is up
+  if (!c.possessedBy && c.visible && now >= c.actUntil) {
     c.visible = false;
     c.dirty = true;
   }
