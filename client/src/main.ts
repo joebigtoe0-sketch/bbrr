@@ -68,6 +68,11 @@ interface Floater {
   born: number;
 }
 const floaters: Floater[] = [];
+const labels = new Map<string, HTMLDivElement>();
+const monMarker = document.createElement('div');
+monMarker.textContent = '⚠';
+monMarker.style.cssText = 'position:absolute;color:#ff3a2a;font:bold 18px Consolas,monospace;text-shadow:0 0 6px #000;transform:translate(-50%,-100%);display:none';
+overlay.appendChild(monMarker);
 store.onThought = (t) => {
   if (t.agentId !== tunedId) return;
   const el = document.createElement('div');
@@ -152,8 +157,37 @@ world.onGroundClick = (x, z) => {
 
 // ---------------- per-frame overlays ----------------
 world.onFrame = () => {
-  // floating thoughts drift up + fade
   const now = performance.now();
+  // agent name labels
+  const seen = new Set<string>();
+  for (const a of store.agents.values()) {
+    if (a.state === 'dead') continue;
+    seen.add(a.id);
+    let el = labels.get(a.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.style.cssText = `position:absolute;font:10px Consolas,monospace;color:hsl(${a.hue},60%,72%);text-shadow:0 0 3px #000,0 0 2px #000;transform:translate(-50%,-100%);white-space:nowrap`;
+      overlay.appendChild(el);
+      labels.set(a.id, el);
+    }
+    el.textContent = a.name + (a.mindState === 'panicked' ? ' ⚠' : '');
+    const p = world.agentHead(a.id);
+    if (p && p.x > 230 && p.x < window.innerWidth && p.y > 0 && p.y < window.innerHeight) {
+      el.style.display = '';
+      el.style.left = `${p.x}px`;
+      el.style.top = `${p.y}px`;
+    } else el.style.display = 'none';
+  }
+  for (const [id, el] of labels) if (!seen.has(id)) { el.remove(); labels.delete(id); }
+  // monster hazard marker (always visible so watchers can track it)
+  const mp = world.monsterScreenPos();
+  if (mp.x > 230 && mp.x < window.innerWidth && mp.y > 0 && mp.y < window.innerHeight) {
+    monMarker.style.display = '';
+    monMarker.style.left = `${mp.x}px`;
+    monMarker.style.top = `${mp.y}px`;
+  } else monMarker.style.display = 'none';
+
+  // floating thoughts drift up + fade
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i]!;
     const age = now - f.born;

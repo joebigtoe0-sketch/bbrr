@@ -19,7 +19,7 @@ interface ChunkMesh {
   lights: THREE.PointLight[];
 }
 interface AgentObj {
-  sprite: THREE.Sprite;
+  sprite: THREE.Mesh;
   spot: THREE.SpotLight;
   target: THREE.Object3D;
   gx: number;
@@ -45,20 +45,22 @@ export class ThreeWorld {
   private chunkMeshes = new Map<string, ChunkMesh>();
   private agents = new Map<string, AgentObj>();
   private evidence = new Map<string, THREE.Object3D>();
-  private monster!: THREE.Sprite;
-  private chaos!: THREE.Sprite;
+  private monster!: THREE.Mesh;
+  private chaos!: THREE.Mesh;
 
   private floorTex!: THREE.Texture;
   private wallMat!: THREE.MeshStandardMaterial;
   private texCache = new Map<string, THREE.Texture>();
   private raycaster = new THREE.Raycaster();
+  private billboards = new Set<THREE.Mesh>();
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setClearColor(0x030304, 1);
+    this.renderer.setClearColor(0x040406, 1);
+    this.scene.fog = new THREE.Fog(0x040406, 34, 74);
     container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.AmbientLight(0x161a24, 0.5));
@@ -76,10 +78,10 @@ export class ThreeWorld {
     this.scene.add(this.cam);
 
     this.buildMaterials();
-    this.monster = this.makeSprite(this.monsterTexture(), 1.6, 2.4);
+    this.monster = this.makeBillboard(this.monsterTexture(), 1.5, 2.3, { castShadow: true });
     this.monster.visible = false;
     this.scene.add(this.monster);
-    this.chaos = this.makeSprite(this.chaosTexture(), 1.1, 1.7);
+    this.chaos = this.makeBillboard(this.chaosTexture(), 1.0, 1.6, { emissive: 0x6a1a6a });
     this.chaos.visible = false;
     this.scene.add(this.chaos);
 
@@ -101,7 +103,11 @@ export class ThreeWorld {
     this.floorTex.wrapS = this.floorTex.wrapT = THREE.RepeatWrapping;
     this.floorTex.repeat.set(0.25, 0.25);
     this.floorTex.colorSpace = THREE.SRGBColorSpace;
-    this.wallMat = new THREE.MeshStandardMaterial({ color: 0xb8a457, roughness: 0.95, metalness: 0 });
+    const wp = loader.load('/sprites/generated/wallpaper_strip.png');
+    wp.wrapS = wp.wrapT = THREE.RepeatWrapping;
+    wp.repeat.set(1, 1);
+    wp.colorSpace = THREE.SRGBColorSpace;
+    this.wallMat = new THREE.MeshStandardMaterial({ map: wp, color: 0xccc08a, roughness: 0.95, metalness: 0 });
   }
 
   private tex(url: string): THREE.Texture {
@@ -168,12 +174,40 @@ export class ThreeWorld {
     });
   }
 
-  private makeSprite(map: THREE.Texture, w: number, h: number): THREE.Sprite {
-    const m = new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false });
-    const sp = new THREE.Sprite(m);
-    sp.scale.set(w, h, 1);
-    sp.center.set(0.5, 0);
-    return sp;
+  /**
+   * A lit, camera-facing billboard plane (not a Sprite) so it responds to
+   * the real lights: dark when unlit (the monster genuinely hides), bright in
+   * a flashlight. Anchored at its feet. `emissive` keeps a subject faintly
+   * self-lit (agents) so it never fully vanishes.
+   */
+  private makeBillboard(
+    map: THREE.Texture,
+    w: number,
+    h: number,
+    opts: { emissive?: number; castShadow?: boolean } = {},
+  ): THREE.Mesh {
+    const geo = new THREE.PlaneGeometry(w, h);
+    geo.translate(0, h / 2, 0);
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      transparent: true,
+      alphaTest: 0.35,
+      roughness: 1,
+      metalness: 0,
+      emissive: new THREE.Color(opts.emissive ?? 0x000000),
+      emissiveMap: opts.emissive ? map : null,
+      emissiveIntensity: opts.emissive ? 0.35 : 0,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = opts.castShadow ?? false;
+    this.billboards.add(m);
+    return m;
+  }
+
+  private dropBillboard(m: THREE.Mesh) {
+    this.billboards.delete(m);
+    this.scene.remove(m);
   }
 
   // ---------------- store wiring ----------------
@@ -182,7 +216,8 @@ export class ThreeWorld {
     const s = this.store;
     s.onSnapshot = () => {
       for (const a of this.agents.values()) {
-        this.scene.remove(a.sprite, a.spot, a.target);
+        this.dropBillboard(a.sprite);
+        this.scene.remove(a.spot, a.target);
       }
       this.agents.clear();
       for (const a of s.agents.values()) this.upsertAgent(a);
@@ -202,7 +237,8 @@ export class ThreeWorld {
     s.onAgentRemove = (id) => {
       const a = this.agents.get(id);
       if (a) {
-        this.scene.remove(a.sprite, a.spot, a.target);
+        this.dropBillboard(a.sprite);
+        this.scene.remove(a.spot, a.target);
         this.agents.delete(id);
       }
     };
@@ -212,7 +248,8 @@ export class ThreeWorld {
     s.onEvidenceRemove = (id) => {
       const o = this.evidence.get(id);
       if (o) {
-        this.scene.remove(o);
+        if (o instanceof THREE.Mesh) this.dropBillboard(o);
+        else this.scene.remove(o);
         this.evidence.delete(id);
       }
     };
@@ -307,6 +344,7 @@ export class ThreeWorld {
           (((gx % 6) + 6) % 6) === 2 &&
           (((gy % 6) + 6) % 6) === 3
         ) {
+          if (this.totalRoomLights() >= 26) return; // GPU light budget
           const light = new THREE.PointLight(0xffe6b0, 26, 5.5, 1.1);
           light.position.set(gx, WALL_H - 0.1, gy);
           cm.lights.push(light);
@@ -316,12 +354,19 @@ export class ThreeWorld {
     }
   }
 
+  private totalRoomLights(): number {
+    let n = 0;
+    for (const cm of this.chunkMeshes.values()) n += cm.lights.length;
+    return n;
+  }
+
   // ---------------- entities ----------------
 
   private upsertAgent(a: Agent) {
     let o = this.agents.get(a.id);
     if (!o) {
-      const sprite = this.makeSprite(this.agentTexture(a.hue), 0.8, 1.1);
+      const hueCol = new THREE.Color().setHSL(a.hue / 360, 0.55, 0.35).getHex();
+      const sprite = this.makeBillboard(this.agentTexture(a.hue), 0.75, 1.05, { emissive: hueCol });
       sprite.position.set(a.x, 0, a.y);
       this.scene.add(sprite);
       const spot = new THREE.SpotLight(0xffe9b8, 140, 9, Math.PI / 4.5, 0.45, 1.0);
@@ -339,7 +384,7 @@ export class ThreeWorld {
     o.ty = a.y;
     o.facing = a.facing;
     o.battery = a.battery;
-    if (a.state === 'dead') o.sprite.material.opacity = 0.35;
+    if (a.state === 'dead') (o.sprite.material as THREE.MeshStandardMaterial).opacity = 0.4;
   }
 
   private updateMonster() {
@@ -359,7 +404,7 @@ export class ThreeWorld {
     const url = EVIDENCE_TEX[e.kind];
     let obj: THREE.Object3D;
     if (url) {
-      obj = this.makeSprite(this.tex(url), 0.7, 0.9);
+      obj = this.makeBillboard(this.tex(url), 0.7, 0.9, { emissive: e.kind === 'crt' ? 0x0a3315 : 0 });
     } else {
       // graffiti / notes: a small flat marker on the floor
       const geo = new THREE.PlaneGeometry(0.5, 0.5);
@@ -477,6 +522,14 @@ export class ThreeWorld {
     const a = this.agents.get(id);
     return a ? this.worldToScreen(a.gx, a.gy, 1.2) : null;
   }
+  monsterScreenPos() {
+    const m = this.store.monster;
+    return this.worldToScreen(m.x, m.y, 2.4);
+  }
+  agentHead(id: string) {
+    const a = this.agents.get(id);
+    return a ? this.worldToScreen(a.gx, a.gy, 1.15) : null;
+  }
 
   // ---------------- per-frame ----------------
 
@@ -503,6 +556,9 @@ export class ThreeWorld {
     const dist = 60;
     this.cam.position.copy(this.target).addScaledVector(ISO_DIR, dist);
     this.cam.lookAt(this.target);
+
+    // billboards face the camera (its orientation is constant, only pans)
+    for (const b of this.billboards) if (b.visible) b.quaternion.copy(this.cam.quaternion);
 
     this.onFrame?.();
     this.renderer.render(this.scene, this.cam);
