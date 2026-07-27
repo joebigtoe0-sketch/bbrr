@@ -23,7 +23,7 @@ export const SnapshotMsg = z.object({
   tick: z.number(),
   agents: z.array(AgentSchema),
   monster: MonsterStateSchema,
-  chaos: z.object({ x: z.number(), y: z.number(), visible: z.boolean() }),
+  chaos: z.object({ x: z.number(), y: z.number(), visible: z.boolean(), possessed: z.boolean() }),
 });
 
 export const ChunksMsg = z.object({
@@ -53,7 +53,7 @@ export const DeltaMsg = z.object({
   agents: z.array(AgentSchema), // changed agents only (full rows, they're small)
   removedAgents: z.array(z.string()),
   monster: MonsterStateSchema.optional(),
-  chaos: z.object({ x: z.number(), y: z.number(), visible: z.boolean() }).optional(),
+  chaos: z.object({ x: z.number(), y: z.number(), visible: z.boolean(), possessed: z.boolean() }).optional(),
   evidenceAdd: z.array(EvidenceArtifactSchema),
   evidenceUpdate: z.array(EvidenceArtifactSchema),
   evidenceRemove: z.array(z.string()),
@@ -78,6 +78,13 @@ export const SpawnResultMsg = z.object({
 
 export const PongMsg = z.object({ t: z.literal('pong'), tick: z.number() });
 
+export const ChaosGrantMsg = z.object({
+  t: z.literal('chaos_grant'),
+  ok: z.boolean(),
+  until: z.number().optional(), // epoch ms the session ends
+  error: z.string().optional(),
+});
+
 export const ServerMsg = z.discriminatedUnion('t', [
   HelloMsg,
   SnapshotMsg,
@@ -86,6 +93,7 @@ export const ServerMsg = z.discriminatedUnion('t', [
   ThoughtMsg,
   SpawnResultMsg,
   PongMsg,
+  ChaosGrantMsg,
 ]);
 export type ServerMsg = z.infer<typeof ServerMsg>;
 
@@ -100,11 +108,28 @@ export const TuneInMsg = z.object({ t: z.literal('tune_in'), agentId: z.string()
 export const TuneOutMsg = z.object({ t: z.literal('tune_out') });
 export const PingMsg = z.object({ t: z.literal('ping') });
 
+export const ChaosClaimMsg = z.object({ t: z.literal('chaos_claim') });
+export const ChaosReleaseMsg = z.object({ t: z.literal('chaos_release') });
+export const ChaosMoveMsg = z.object({
+  t: z.literal('chaos_move'),
+  x: z.number(),
+  y: z.number(),
+});
+export const ChaosActMsg = z.object({
+  t: z.literal('chaos_act'),
+  kind: z.enum(['sign', 'note', 'lock', 'terminal', 'graffiti']),
+  text: z.string().max(160).optional(),
+});
+
 export const ClientMsg = z.discriminatedUnion('t', [
   SubscribeChunksMsg,
   TuneInMsg,
   TuneOutMsg,
   PingMsg,
+  ChaosClaimMsg,
+  ChaosReleaseMsg,
+  ChaosMoveMsg,
+  ChaosActMsg,
 ]);
 export type ClientMsg = z.infer<typeof ClientMsg>;
 

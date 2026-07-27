@@ -5,15 +5,22 @@ import type { MazeChunk, EvidenceArtifact, ServerMsg } from '@backrooms/shared';
 import type { World } from '../sim/world.js';
 import { toWireMonster } from '../sim/monster.js';
 import { chunkRepo, evidenceRepo } from '../db/repo.js';
+import { nanoid } from 'nanoid';
+import { actChaos, claimChaos, moveChaos, releaseChaos } from '../sim/chaos.js';
 
 interface Client {
+  id: string;
+  ip: string;
   ws: WebSocket;
   subscribed: Set<string>;
   tunedAgentId: string | null;
 }
 
+const CHAOS_COOLDOWN_MS = 4 * 60 * 1000; // per-ip: once every 4 minutes
+
 export class WsHub {
   private clients = new Set<Client>();
+  private chaosCooldown = new Map<string, number>(); // ip -> next allowed claim
   readonly wss: WebSocketServer;
 
   constructor(
@@ -21,7 +28,10 @@ export class WsHub {
     private world: World,
   ) {
     this.wss = new WebSocketServer({ server, path: '/ws' });
-    this.wss.on('connection', (ws) => this.onConnection(ws));
+    this.wss.on('connection', (ws, req) => {
+      const ip = (req.headers['x-forwarded-for']?.toString().split(',')[0] ?? req.socket.remoteAddress ?? 'unknown').trim();
+      this.onConnection(ws, ip);
+    });
 
     world.subscriptionAnchors = () => {
       const anchors: { cx: number; cy: number }[] = [];
@@ -57,8 +67,8 @@ export class WsHub {
     if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(msg));
   }
 
-  private onConnection(ws: WebSocket) {
-    const client: Client = { ws, subscribed: new Set(), tunedAgentId: null };
+  private onConnection(ws: WebSocket, ip: string) {
+    const client: Client = { id: nanoid(8), ip, ws, subscribed: new Set(), tunedAgentId: null };
     this.clients.add(client);
     this.world.spectatorCount = this.clients.size;
 
@@ -77,6 +87,7 @@ export class WsHub {
         x: this.world.chaosRt.x,
         y: this.world.chaosRt.y,
         visible: this.world.chaosRt.visible,
+        possessed: !!this.world.chaosRt.possessedBy,
       },
     });
 
@@ -92,14 +103,13 @@ export class WsHub {
       this.handle(client, result.data);
     });
 
-    ws.on('close', () => {
+    const drop = () => {
+      releaseChaos(this.world, client.id, Date.now());
       this.clients.delete(client);
       this.world.spectatorCount = this.clients.size;
-    });
-    ws.on('error', () => {
-      this.clients.delete(client);
-      this.world.spectatorCount = this.clients.size;
-    });
+    };
+    ws.on('close', drop);
+    ws.on('error', drop);
   }
 
   private handle(client: Client, msg: ClientMsg) {
@@ -132,6 +142,36 @@ export class WsHub {
         break;
       case 'ping':
         this.send(client, { t: 'pong', tick: this.world.tick });
+        break;
+      case 'chaos_claim': {
+        const now = Date.now();
+        const cd = this.chaosCooldown.get(client.ip) ?? 0;
+        if (this.world.chaosRt.possessedBy && this.world.chaosRt.possessedBy !== client.id) {
+          this.send(client, { t: 'chaos_grant', ok: false, error: 'someone else is the chaos right now' });
+          break;
+        }
+        if (now < cd) {
+          const secs = Math.ceil((cd - now) / 1000);
+          this.send(client, { t: 'chaos_grant', ok: false, error: `the maze resists you. try again in ${secs}s` });
+          break;
+        }
+        const res = claimChaos(this.world, client.id, now);
+        if (res.ok) {
+          this.chaosCooldown.set(client.ip, now + CHAOS_COOLDOWN_MS);
+          this.send(client, { t: 'chaos_grant', ok: true, until: res.until });
+        } else {
+          this.send(client, { t: 'chaos_grant', ok: false, error: res.error });
+        }
+        break;
+      }
+      case 'chaos_move':
+        moveChaos(this.world, client.id, msg.x, msg.y);
+        break;
+      case 'chaos_act':
+        actChaos(this.world, client.id, msg.kind, msg.text, Date.now());
+        break;
+      case 'chaos_release':
+        releaseChaos(this.world, client.id, Date.now());
         break;
     }
   }

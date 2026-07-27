@@ -164,7 +164,7 @@ export class World {
       }
     }
     tickMonster(this, dtMs, now);
-    tickChaos(this, now);
+    tickChaos(this, now, dtMs);
 
     if (now - this.lastViralRollAt > 120000) {
       this.lastViralRollAt = now;
@@ -772,8 +772,10 @@ export class World {
     const monsterChanged = monsterDirty(this.monsterRt);
     if (monsterChanged) markMonsterSent(this.monsterRt);
 
-    const chaosChanged = this.chaosRt.dirty;
+    const possessedNow = !!this.chaosRt.possessedBy;
+    const chaosChanged = this.chaosRt.dirty || possessedNow !== this.chaosRt.lastSentPossessed;
     this.chaosRt.dirty = false;
+    this.chaosRt.lastSentPossessed = possessedNow;
 
     const evidenceAdd = this.evidence.pendingAdd.splice(0);
     const evidenceUpdate = this.evidence.pendingUpdate.splice(0);
@@ -807,7 +809,12 @@ export class World {
       removedAgents: removed,
       monster: monsterChanged ? toWireMonster(this.monsterRt) : undefined,
       chaos: chaosChanged
-        ? { x: this.chaosRt.x, y: this.chaosRt.y, visible: this.chaosRt.visible }
+        ? {
+            x: this.chaosRt.x,
+            y: this.chaosRt.y,
+            visible: this.chaosRt.visible,
+            possessed: !!this.chaosRt.possessedBy,
+          }
         : undefined,
       evidenceAdd,
       evidenceUpdate,

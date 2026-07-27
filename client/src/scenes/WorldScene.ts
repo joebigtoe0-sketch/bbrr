@@ -161,6 +161,9 @@ export class WorldScene extends Phaser.Scene {
   private lastSubSignature = '';
   private centeredOnce = false;
   private dragDist = 0;
+  private possessing = false;
+  private chaosUntil = 0;
+  private chaosLabel?: Phaser.GameObjects.Text;
 
   constructor() {
     super('world');
@@ -1014,6 +1017,13 @@ export class WorldScene extends Phaser.Scene {
         cam.setZoom(z);
       },
     );
+    // while possessing the chaos, a floor click steers its body
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (!this.possessing || pointer.getDistance() > 8) return;
+      const wp = cam.getWorldPoint(pointer.x, pointer.y);
+      const g = screenToGrid(wp.x, wp.y);
+      this.conn.send({ t: 'chaos_move', x: Math.floor(g.x), y: Math.floor(g.y) });
+    });
   }
 
   private wireUi() {
@@ -1033,6 +1043,49 @@ export class WorldScene extends Phaser.Scene {
       };
       tryFocus(10);
     });
+    this.initChaosControls();
+  }
+
+  private initChaosControls() {
+    const $ = (id: string) => document.getElementById(id) as HTMLElement;
+    const btn = $('chaos-btn') as HTMLButtonElement;
+    const hud = $('chaos-hud');
+    const input = $('chaos-text') as HTMLInputElement;
+
+    btn.onclick = () => this.conn.send({ t: 'chaos_claim' });
+    $('chaos-release').onclick = () => this.endPossession(true);
+
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#chaos-hud button[data-act]')) {
+      b.onclick = () => {
+        if (!this.possessing) return;
+        this.conn.send({
+          t: 'chaos_act',
+          kind: b.dataset.act as 'sign' | 'note' | 'lock' | 'terminal' | 'graffiti',
+          text: input.value.trim() || undefined,
+        });
+        input.value = '';
+      };
+    }
+
+    this.store.onChaosGrant = (ok, until, error) => {
+      if (!ok) {
+        toast(error || 'the maze resists you');
+        return;
+      }
+      this.possessing = true;
+      this.chaosUntil = until;
+      hud.classList.add('open');
+      btn.disabled = true;
+      this.followAgentId = null;
+      toast('you are the chaos now. click the floor to move.');
+    };
+  }
+
+  private endPossession(tellServer: boolean) {
+    if (tellServer && this.possessing) this.conn.send({ t: 'chaos_release' });
+    this.possessing = false;
+    document.getElementById('chaos-hud')!.classList.remove('open');
+    (document.getElementById('chaos-btn') as HTMLButtonElement).disabled = false;
   }
 
   // ---------------- per-frame ----------------
@@ -1112,7 +1165,34 @@ export class WorldScene extends Phaser.Scene {
     }
     // chaos flicker
     if (this.chaosView.visible) {
-      this.chaosView.setAlpha(0.4 + Math.random() * 0.6);
+      const poss = this.store.chaos.possessed;
+      this.chaosView.setAlpha(poss ? 1 : 0.4 + Math.random() * 0.6);
+      if (poss) {
+        if (!this.chaosLabel) {
+          this.chaosLabel = this.add
+            .text(0, 0, 'CHAOS', {
+              fontFamily: 'Consolas, monospace',
+              fontSize: '10px',
+              color: '#f0a6f4',
+              stroke: '#1a061c',
+              strokeThickness: 3,
+            })
+            .setOrigin(0.5, 1)
+            .setDepth(BLIP_DEPTH);
+        }
+        this.chaosLabel.setPosition(this.chaosView.x, this.chaosView.y - 48).setVisible(true);
+      } else this.chaosLabel?.setVisible(false);
+    } else this.chaosLabel?.setVisible(false);
+
+    // possession countdown + auto-exit
+    if (this.possessing) {
+      const left = Math.max(0, this.chaosUntil - Date.now());
+      const el = document.getElementById('chaos-timer');
+      if (el) {
+        const s = Math.ceil(left / 1000);
+        el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      }
+      if (left <= 0) this.endPossession(false);
     }
 
     // camera follow
@@ -1185,10 +1265,12 @@ export class WorldScene extends Phaser.Scene {
         this.eraserPool.setScale(0.3 * z).setAlpha(0.85);
         this.darkRT.erase(this.eraserPool, ps.x, ps.y);
       }
-      // the chaos thing glows faintly when it manifests
+      // the chaos thing glows faintly when it manifests — brighter when a
+      // watcher is steering it, so they can navigate the dark
       if (this.chaosView.visible) {
         const cs = toRT(this.chaosView.x, this.chaosView.y - 16);
-        this.eraserPool.setScale(0.5 * z).setAlpha(0.55);
+        const poss = this.store.chaos.possessed;
+        this.eraserPool.setScale((poss ? 1.1 : 0.5) * z).setAlpha(poss ? 0.85 : 0.55);
         this.darkRT.erase(this.eraserPool, cs.x, cs.y);
       }
     }

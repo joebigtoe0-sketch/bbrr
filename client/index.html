@@ -114,6 +114,37 @@
 
     #hint { position: absolute; bottom: 10px; right: 14px; font-size: 10px; color: #4a4428; z-index: 5; }
 
+    /* ---------- become-the-chaos ---------- */
+    #chaos-btn {
+      width: 100%; padding: 9px; margin-top: 8px; background: #1a0e1c;
+      border: 1px solid #6a2a6e; color: #d98dde; font-family: inherit;
+      font-size: 11px; letter-spacing: 2px; cursor: pointer;
+    }
+    #chaos-btn:hover { background: #2a1430; }
+    #chaos-btn:disabled { opacity: 0.4; cursor: default; }
+    #chaos-hud {
+      position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+      z-index: 55; display: none; flex-direction: column; gap: 8px; width: min(760px, 80vw);
+      background: rgba(20, 6, 24, 0.94); border: 1px solid #8a2f90; padding: 12px 14px;
+      box-shadow: 0 0 30px rgba(208, 38, 201, 0.15);
+    }
+    #chaos-hud.open { display: flex; }
+    #chaos-hud .chaos-top { display: flex; align-items: center; gap: 12px; }
+    #chaos-timer { color: #f0a6f4; font-size: 16px; letter-spacing: 2px; min-width: 44px; }
+    #chaos-hud .chaos-hint { flex: 1; color: #9a6a9e; font-size: 10px; letter-spacing: 1px; }
+    #chaos-release { background: #3a1030; border: 1px solid #8a2f90; color: #f0a6f4;
+      font-family: inherit; font-size: 10px; letter-spacing: 1px; padding: 5px 10px; cursor: pointer; }
+    #chaos-hud .chaos-row { display: flex; gap: 6px; }
+    #chaos-text {
+      flex: 1; padding: 7px 9px; background: #120610; border: 1px solid #6a2a6e;
+      color: #f0d0f4; font-family: inherit; font-size: 12px;
+    }
+    #chaos-hud .chaos-row button[data-act] {
+      background: #2a1430; border: 1px solid #6a2a6e; color: #d98dde;
+      font-family: inherit; font-size: 10px; letter-spacing: 1px; padding: 6px 9px; cursor: pointer; white-space: nowrap;
+    }
+    #chaos-hud .chaos-row button[data-act]:hover { background: #3a1c42; color: #fff; }
+
     /* ---------- panel buttons ---------- */
     #panel-btns { display: flex; gap: 6px; margin-top: 8px; }
     #panel-btns button {
@@ -185,6 +216,7 @@
       <button id="btn-tweets">TWEETS</button>
       <button id="btn-records">RECORDS</button>
     </div>
+    <button id="chaos-btn">☠ BECOME THE CHAOS</button>
     <h2>Inside now</h2>
     <div id="agent-list"></div>
     <h2>Did not make it</h2>
@@ -219,6 +251,22 @@
   <div id="right-panel">
     <h2><span id="right-title">LOG</span><button id="right-close">[x]</button></h2>
     <div id="right-content"></div>
+  </div>
+
+  <div id="chaos-hud">
+    <div class="chaos-top">
+      <span id="chaos-timer">1:30</span>
+      <span class="chaos-hint">click the floor to move · type words · pick an act</span>
+      <button id="chaos-release">RELEASE</button>
+    </div>
+    <div class="chaos-row">
+      <input id="chaos-text" maxlength="160" placeholder="what it says (optional)…" />
+      <button data-act="sign">FAKE SIGN</button>
+      <button data-act="note">NOTE</button>
+      <button data-act="graffiti">GRAFFITI</button>
+      <button data-act="terminal">FORGE LOG</button>
+      <button data-act="lock">LOCK DOOR</button>
+    </div>
   </div>
 
   <div id="toasts"></div>

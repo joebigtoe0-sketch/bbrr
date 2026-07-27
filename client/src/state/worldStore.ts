@@ -13,6 +13,7 @@ export interface ChaosView {
   x: number;
   y: number;
   visible: boolean;
+  possessed: boolean;
 }
 
 /** Client mirror of server state; the scene subscribes to change callbacks. */
@@ -20,7 +21,7 @@ export class WorldStore {
   tick = 0;
   agents = new Map<string, Agent>();
   monster: MonsterState = { x: 0, y: 0, mode: 'roam' };
-  chaos: ChaosView = { x: 0, y: 0, visible: false };
+  chaos: ChaosView = { x: 0, y: 0, visible: false, possessed: false };
   chunks = new Map<string, MazeChunk>();
   evidence = new Map<string, EvidenceArtifact>();
 
@@ -37,6 +38,7 @@ export class WorldStore {
   onWorldEvent: (e: WorldEvent) => void = () => {};
   onSpeech: (agentId: string, text: string) => void = () => {};
   onThought: (t: ThoughtEvent) => void = () => {};
+  onChaosGrant: (ok: boolean, until: number, error: string) => void = () => {};
 
   dropChunk(key: string) {
     this.chunks.delete(key);
@@ -136,6 +138,9 @@ export class WorldStore {
       }
       case 'thought':
         this.onThought(msg.thought);
+        break;
+      case 'chaos_grant':
+        this.onChaosGrant(msg.ok, msg.until ?? 0, msg.error ?? '');
         break;
       case 'spawn_result':
       case 'pong':
