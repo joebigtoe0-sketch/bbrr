@@ -685,21 +685,7 @@ export class WorldScene extends Phaser.Scene {
     py: number,
     R: number,
   ): { ox: number; oy: number; pts: { x: number; y: number }[] } {
-    const segs = this.gatherSegs(px, py, R);
-    const pts: { x: number; y: number }[] = [];
-    const N = 64;
-    for (let i = 0; i < N; i++) {
-      const th = (i / N) * Math.PI * 2;
-      const dx = Math.cos(th);
-      const dy = Math.sin(th);
-      let t = R;
-      for (const s of segs) {
-        const hit = raySeg(px, py, dx, dy, s[0], s[1], s[2], s[3]);
-        if (hit !== null && hit < t) t = hit;
-      }
-      const op = entityToScreen(px + dx * t, py + dy * t);
-      pts.push({ x: op.sx, y: op.sy });
-    }
+    const pts = this.castVisibility(px, py, R, () => R);
     const o = entityToScreen(px, py);
     return { ox: o.sx, oy: o.sy, pts };
   }
@@ -763,6 +749,50 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Exact visibility polygon by ENDPOINT ray-casting: shoot rays at every
+   * wall-corner (plus a hair to either side) and a coarse background fan, then
+   * sort by angle. Vertices land exactly on wall corners, so the polygon hugs
+   * walls with no bleed — light never crosses a wall between two sample rays
+   * (the fixed-angle version's failure). radiusAt(angle) gives the max reach
+   * for that direction (a constant for room lights, a teardrop for torches).
+   */
+  private castVisibility(
+    px: number,
+    py: number,
+    maxR: number,
+    radiusAt: (angle: number) => number,
+  ): { x: number; y: number }[] {
+    const segs = this.gatherSegs(px, py, maxR);
+    const angles: number[] = [];
+    for (let i = 0; i < 40; i++) angles.push((i / 40) * Math.PI * 2); // background fan
+    for (const s of segs) {
+      for (const [ex, ey] of [
+        [s[0], s[1]],
+        [s[2], s[3]],
+      ] as const) {
+        const base = Math.atan2(ey - py, ex - px);
+        angles.push(base - 0.0006, base, base + 0.0006);
+      }
+    }
+    const hits: { a: number; x: number; y: number }[] = [];
+    for (const a of angles) {
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      let t = radiusAt(a);
+      for (const s of segs) {
+        const hit = raySeg(px, py, dx, dy, s[0], s[1], s[2], s[3]);
+        if (hit !== null && hit < t) t = hit;
+      }
+      hits.push({ a, x: px + dx * t, y: py + dy * t });
+    }
+    hits.sort((p, q) => p.a - q.a);
+    return hits.map((h) => {
+      const op = entityToScreen(h.x, h.y);
+      return { x: op.sx, y: op.sy };
+    });
+  }
+
   private computeLight(v: AgentView) {
     v.lightAt = this.time.now;
     v.lightGX = v.gx;
@@ -775,30 +805,12 @@ export class WorldScene extends Phaser.Scene {
     const Rs = 3.2 * bf;
     const fd = GRID_DIR[v.facing] ?? [0, 1];
     const beamAng = Math.atan2(fd[1]!, fd[0]!);
-
-    const segs = this.gatherSegs(px, py, R);
-
-    const outer: { x: number; y: number }[] = [];
-    const N = 96;
-    for (let i = 0; i < N; i++) {
-      const th = (i / N) * Math.PI * 2;
+    v.lightOuter = this.castVisibility(px, py, R, (th) => {
       let dAng = Math.abs(th - beamAng);
       if (dAng > Math.PI) dAng = Math.PI * 2 - dAng;
-      // one smooth teardrop: full room-light all around, reaching ahead —
-      // no hard cone/bubble split (that read as several disjoint lights)
-      const tt = (Math.cos(dAng) + 1) / 2;
-      const maxR = Rs + (R - Rs) * Math.pow(tt, 1.6);
-      const dx = Math.cos(th);
-      const dy = Math.sin(th);
-      let t = maxR;
-      for (const s of segs) {
-        const hit = raySeg(px, py, dx, dy, s[0], s[1], s[2], s[3]);
-        if (hit !== null && hit < t) t = hit;
-      }
-      const op = entityToScreen(px + dx * t, py + dy * t);
-      outer.push({ x: op.sx, y: op.sy });
-    }
-    v.lightOuter = outer;
+      const tt = (Math.cos(dAng) + 1) / 2; // 1 ahead, 0 behind
+      return Rs + (R - Rs) * Math.pow(tt, 1.6); // smooth teardrop
+    });
     v.lightInner = null;
   }
 
