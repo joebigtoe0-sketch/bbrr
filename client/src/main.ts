@@ -162,7 +162,9 @@ store.onWorldEvent = (e: WorldEvent) => {
 let lastSub = '';
 setInterval(() => {
   const c = world.viewCenterTile();
-  const r = 3;
+  // only the chunks around the followed agent — everything else is pitch black
+  // anyway, so this keeps the payload (and the render load) tiny on any machine
+  const r = 1;
   const cx = Math.floor(c.x / 16);
   const cy = Math.floor(c.y / 16);
   const sig = `${cx},${cy}`;

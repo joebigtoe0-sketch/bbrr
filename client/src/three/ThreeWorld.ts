@@ -91,6 +91,7 @@ export class ThreeWorld {
   private monsterGX = 0;
   private monsterGY = 0;
   private monsterPhase = 0;
+  private frameCount = 0;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -323,7 +324,10 @@ export class ThreeWorld {
     });
     (floorMat.map as THREE.Texture).needsUpdate = true;
     const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.position.set(ox + S / 2 - 0.5, 0, oy + S / 2 - 0.5);
+    // tile (gx,gy) occupies the square [gx,gx+1]x[gy,gy+1] (centre gx+0.5,gy+0.5)
+    // — the same convention the server uses for agents/monster and that evidence
+    // renders with (+0.5). Getting this wrong put entities half a tile into walls.
+    floor.position.set(ox + S / 2, 0, oy + S / 2);
     floor.receiveShadow = true;
     group.add(floor);
 
@@ -336,14 +340,16 @@ export class ThreeWorld {
         const gy = oy + ly;
         const eh = c.wallsH[i]!;
         if (eh === EDGE.Wall || eh === EDGE.DoorLocked) {
+          // north edge of tile (its y=gy side), running along x across the tile
           const g = new THREE.BoxGeometry(1, WALL_H, 0.08);
-          g.translate(gx, WALL_H / 2, gy - 0.5);
+          g.translate(gx + 0.5, WALL_H / 2, gy);
           boxes.push(g);
         }
         const ev = c.wallsV[i]!;
         if (ev === EDGE.Wall || ev === EDGE.DoorLocked) {
+          // west edge of tile (its x=gx side), running along z across the tile
           const g = new THREE.BoxGeometry(0.08, WALL_H, 1);
-          g.translate(gx - 0.5, WALL_H / 2, gy);
+          g.translate(gx, WALL_H / 2, gy + 0.5);
           boxes.push(g);
         }
       }
@@ -383,7 +389,7 @@ export class ThreeWorld {
         ) {
           if (this.totalRoomLights() >= 26) return; // GPU light budget
           const light = new THREE.PointLight(0xffe6b0, 26, 5.5, 1.1);
-          light.position.set(gx, WALL_H - 0.1, gy);
+          light.position.set(gx + 0.5, WALL_H - 0.1, gy + 0.5);
           cm.lights.push(light);
           this.scene.add(light);
         }
@@ -395,6 +401,36 @@ export class ThreeWorld {
     let n = 0;
     for (const cm of this.chunkMeshes.values()) n += cm.lights.length;
     return n;
+  }
+
+  private disposeChunkMesh(key: string) {
+    const cm = this.chunkMeshes.get(key);
+    if (!cm) return;
+    for (const l of cm.lights) this.scene.remove(l);
+    this.scene.remove(cm.group);
+    cm.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.geometry.dispose();
+    });
+    this.chunkMeshes.delete(key);
+  }
+
+  /**
+   * Keep only the chunks near the followed agent loaded. Everything far is pitch
+   * black in the backrooms anyway, so dropping it costs nothing visually but keeps
+   * draw calls, geometry and lights bounded no matter how far the agent roams —
+   * this is what makes it run on any machine. Dropped chunks re-fetch on return.
+   */
+  private evictFarChunks(centerX: number, centerY: number) {
+    const ccx = Math.floor(centerX / CHUNK_SIZE);
+    const ccy = Math.floor(centerY / CHUNK_SIZE);
+    const KEEP = 2; // chunks of Chebyshev radius to retain
+    for (const key of [...this.chunkMeshes.keys()]) {
+      const [kx, ky] = key.split(',').map(Number);
+      if (Math.max(Math.abs(kx! - ccx), Math.abs(ky! - ccy)) > KEEP) {
+        this.disposeChunkMesh(key);
+        this.store.dropChunk(key);
+      }
+    }
   }
 
   // ---------------- entities ----------------
@@ -794,6 +830,8 @@ export class ThreeWorld {
       const a = this.agents.get(this.followId);
       if (a) this.target.lerp(new THREE.Vector3(a.gx, 0, a.gy), 0.12);
     }
+    // keep only nearby chunks resident (bounded memory / draw calls)
+    if ((this.frameCount++ & 31) === 0) this.evictFarChunks(this.target.x, this.target.z);
     this.cam.zoom = this.zoom;
     this.cam.updateProjectionMatrix();
     const dist = 60;
