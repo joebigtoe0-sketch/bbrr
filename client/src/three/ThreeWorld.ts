@@ -342,16 +342,18 @@ export class ThreeWorld {
         const gx = ox + lx;
         const gy = oy + ly;
         const eh = c.wallsH[i]!;
+        // walls extend BELOW the floor (bottom at -0.15) so the shadow's contact
+        // line is buried and never shows as a lit sliver "under" the wall
         if (eh === EDGE.Wall || eh === EDGE.DoorLocked) {
           // north edge of tile (its y=gy side), running along x across the tile
-          const g = new THREE.BoxGeometry(1, WALL_H, WALL_T);
+          const g = new THREE.BoxGeometry(1, WALL_H + 0.3, WALL_T);
           g.translate(gx + 0.5, WALL_H / 2, gy);
           boxes.push(g);
         }
         const ev = c.wallsV[i]!;
         if (ev === EDGE.Wall || ev === EDGE.DoorLocked) {
           // west edge of tile (its x=gx side), running along z across the tile
-          const g = new THREE.BoxGeometry(WALL_T, WALL_H, 1);
+          const g = new THREE.BoxGeometry(WALL_T, WALL_H + 0.3, 1);
           g.translate(gx, WALL_H / 2, gy + 0.5);
           boxes.push(g);
         }
@@ -451,8 +453,8 @@ export class ThreeWorld {
       spot.shadow.mapSize.set(2048, 2048);
       spot.shadow.camera.near = 0.1;
       spot.shadow.camera.far = 18;
-      spot.shadow.bias = -0.0006;
-      spot.shadow.normalBias = 0.04;
+      spot.shadow.bias = -0.0008;
+      spot.shadow.normalBias = 0.018;
       const target = new THREE.Object3D();
       this.scene.add(spot, target);
       spot.target = target;
@@ -834,7 +836,7 @@ export class ThreeWorld {
       // could cross to the far side of a thin wall when the agent hugs it. Kept
       // LOW (below the wall tops) so the cone can't skim over walls into the next
       // room; the shadow map then contains it to the corridor the agent is in.
-      o.spot.position.set(o.gx + fd[0] * 0.18, 0.82, o.gy + fd[1] * 0.18);
+      o.spot.position.set(o.gx + fd[0] * 0.18, 0.92, o.gy + fd[1] * 0.18);
       // the followed agent (whose light is shadow-contained) gets the big reach;
       // others get a short, dim beam so their un-shadowed light barely leaks
       const reach = followed ? 15 : 6.5;
