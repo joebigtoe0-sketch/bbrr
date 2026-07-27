@@ -40,6 +40,7 @@ interface AgentObj {
   speed: number;
   danceUntil: number;
   nextDanceCheck: number;
+  queue: { x: number; y: number }[];
 }
 
 function strHash(s: string): number {
@@ -399,7 +400,7 @@ export class ThreeWorld {
       root.position.set(a.x, 0, a.y);
       this.scene.add(root);
       const spot = new THREE.SpotLight(0xffe4ad, 130, 9, Math.PI / 2.7, 0.7, 1.15);
-      spot.castShadow = true;
+      spot.castShadow = false;
       spot.shadow.mapSize.set(1024, 1024);
       spot.shadow.camera.near = 0.1;
       spot.shadow.camera.far = 12;
@@ -424,6 +425,7 @@ export class ThreeWorld {
         speed: 0,
         danceUntil: 0,
         nextDanceCheck: 0,
+        queue: [],
       };
       this.agents.set(a.id, o);
       if (this.npcTemplate) this.buildAgentModel(o, a.hue);
@@ -433,6 +435,10 @@ export class ThreeWorld {
     o.facing = a.facing;
     o.battery = a.battery;
     o.state = a.state;
+    const last = o.queue[o.queue.length - 1];
+    if (!last || Math.abs(last.x - a.x) > 0.001 || Math.abs(last.y - a.y) > 0.001) {
+      o.queue.push({ x: a.x, y: a.y });
+    }
     if (a.state === 'dead' && o.model) o.model.visible = true;
   }
 
@@ -653,21 +659,34 @@ export class ThreeWorld {
     this.lastFrameT = _t;
     const nowMs = performance.now();
     for (const o of this.agents.values()) {
+      // smooth constant-speed movement along the server-position trail
       const px = o.gx;
       const py = o.gy;
-      o.gx += (o.tx - o.gx) * 0.2;
-      o.gy += (o.ty - o.gy) * 0.2;
-      o.speed += (Math.hypot(o.gx - px, o.gy - py) / (dt || 0.016) - o.speed) * 0.3;
+      let budget = 1.75 * dt;
+      if (o.queue.length > 3) budget *= 1 + (o.queue.length - 3) * 0.5;
+      while (budget > 0 && o.queue.length > 0) {
+        const t = o.queue[0]!;
+        const d = Math.hypot(t.x - o.gx, t.y - o.gy);
+        if (d > 4) { o.gx = t.x; o.gy = t.y; o.queue.shift(); continue; }
+        if (d <= budget) { o.gx = t.x; o.gy = t.y; budget -= d; o.queue.shift(); }
+        else { o.gx += ((t.x - o.gx) / d) * budget; o.gy += ((t.y - o.gy) / d) * budget; budget = 0; }
+      }
+      const inst = Math.hypot(o.gx - px, o.gy - py) / (dt || 0.016);
+      o.speed += (inst - o.speed) * 0.25;
+      // only the followed agent casts flashlight shadows (keeps the framerate up)
+      const wantShadow = o === this.agents.get(this.followId ?? '');
+      if (o.spot.castShadow !== wantShadow) o.spot.castShadow = wantShadow;
       o.root.position.set(o.gx, 0, o.gy);
       const wantRot = FACE_ROT[o.facing] ?? 0;
       let dr = wantRot - o.root.rotation.y;
       while (dr > Math.PI) dr -= Math.PI * 2;
       while (dr < -Math.PI) dr += Math.PI * 2;
       o.root.rotation.y += dr * Math.min(1, dt * 10);
+      const movingNow = o.state === 'moving' || o.queue.length > 0 || o.speed > 0.2;
       let anim: string;
       if (o.state === 'dead') anim = 'Dead';
-      else if (o.speed > 1.9) anim = 'Running';
-      else if (o.speed > 0.25 || o.state === 'moving') anim = 'Walking';
+      else if (movingNow && o.speed > 1.75) anim = 'Running';
+      else if (movingNow) anim = 'Walking';
       else {
         if (nowMs > o.nextDanceCheck) {
           o.nextDanceCheck = nowMs + 12000;
