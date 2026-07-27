@@ -6,7 +6,7 @@ import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@backrooms/shared';
 import type { Agent, EvidenceArtifact, MazeChunk } from '@backrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
-import { WALL_H, ISO_DIR } from './iso.js';
+import { WALL_H, WALL_T, ISO_DIR } from './iso.js';
 
 /**
  * Three.js renderer for the world. Real geometry (floors + edge walls) lit by
@@ -344,14 +344,14 @@ export class ThreeWorld {
         const eh = c.wallsH[i]!;
         if (eh === EDGE.Wall || eh === EDGE.DoorLocked) {
           // north edge of tile (its y=gy side), running along x across the tile
-          const g = new THREE.BoxGeometry(1, WALL_H, 0.08);
+          const g = new THREE.BoxGeometry(1, WALL_H, WALL_T);
           g.translate(gx + 0.5, WALL_H / 2, gy);
           boxes.push(g);
         }
         const ev = c.wallsV[i]!;
         if (ev === EDGE.Wall || ev === EDGE.DoorLocked) {
           // west edge of tile (its x=gx side), running along z across the tile
-          const g = new THREE.BoxGeometry(0.08, WALL_H, 1);
+          const g = new THREE.BoxGeometry(WALL_T, WALL_H, 1);
           g.translate(gx, WALL_H / 2, gy + 0.5);
           boxes.push(g);
         }
@@ -444,12 +444,15 @@ export class ThreeWorld {
       const root = new THREE.Group();
       root.position.set(a.x, 0, a.y);
       this.scene.add(root);
-      const spot = new THREE.SpotLight(0xffe4ad, 150, 15, Math.PI / 3.8, 0.55, 1.1);
+      const spot = new THREE.SpotLight(0xffe4ad, 150, 15, Math.PI / 4.1, 0.5, 1.1);
       spot.castShadow = false;
-      spot.shadow.mapSize.set(1024, 1024);
+      // high-res shadow map + normalBias so thin(ish) walls fully occlude the
+      // beam instead of letting it bleed past their edges when aimed down a hall
+      spot.shadow.mapSize.set(2048, 2048);
       spot.shadow.camera.near = 0.1;
       spot.shadow.camera.far = 18;
-      spot.shadow.bias = -0.0025;
+      spot.shadow.bias = -0.0006;
+      spot.shadow.normalBias = 0.04;
       const target = new THREE.Object3D();
       this.scene.add(spot, target);
       spot.target = target;
@@ -652,9 +655,19 @@ export class ThreeWorld {
       );
     } else {
       const url = EVIDENCE_TEX[e.kind];
+      const isTerminal = e.kind === 'crt' || e.kind === 'anomaly';
       obj = this.makeBillboard(this.tex(url ?? '/sprites/generated/note.png'), 0.7, 0.9, {
-        emissive: e.kind === 'crt' ? 0x0a3315 : 0,
+        emissive: isTerminal ? 0x14aa33 : 0,
       });
+      if (isTerminal) {
+        // a flashing green pilot light so terminals are findable in the dark
+        const glow = new THREE.PointLight(0x33ff66, 3, 4.5, 1.4);
+        glow.position.set(0, 0.55, 0);
+        obj.add(glow);
+        obj.userData.beaconLight = glow;
+        obj.userData.beaconMat = (obj as THREE.Mesh).material;
+        obj.userData.beaconPhase = Math.random() * 6.28;
+      }
     }
     obj.position.set(e.x + 0.5, 0.02, e.y + 0.5);
     obj.userData.evidenceId = e.id;
@@ -856,6 +869,17 @@ export class ThreeWorld {
             this.monsterLegRest[i]! + Math.sin(this.monsterPhase + i * Math.PI) * amp;
         }
       }
+    }
+
+    // ---- terminal beacons: pulse the green pilot light so they're findable ----
+    for (const obj of this.evidence.values()) {
+      const glow = obj.userData.beaconLight as THREE.PointLight | undefined;
+      if (!glow) continue;
+      const ph = obj.userData.beaconPhase as number;
+      const blink = 0.35 + 0.65 * Math.pow(Math.max(0, Math.sin(nowMs * 0.004 + ph)), 3);
+      glow.intensity = 1.2 + 5 * blink;
+      const mat = obj.userData.beaconMat as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = 0.4 + 1.4 * blink;
     }
 
     // ---- chaos: glitching, see-through body ----
