@@ -162,6 +162,7 @@ export class WorldScene extends Phaser.Scene {
   private centeredOnce = false;
   private dragDist = 0;
   private possessing = false;
+  private chaosSeenPossessed = false;
   private chaosUntil = 0;
   private chaosLabel?: Phaser.GameObjects.Text;
 
@@ -1064,6 +1065,9 @@ export class WorldScene extends Phaser.Scene {
           text: input.value.trim() || undefined,
         });
         input.value = '';
+        // one act per possession: acting ends your turn (server agrees)
+        this.endPossession(false);
+        toast('the chaos does your bidding, once. then it is gone.');
       };
     }
 
@@ -1073,6 +1077,7 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
       this.possessing = true;
+      this.chaosSeenPossessed = false;
       this.chaosUntil = until;
       hud.classList.add('open');
       btn.disabled = true;
@@ -1193,6 +1198,8 @@ export class WorldScene extends Phaser.Scene {
         el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
       }
       if (left <= 0) this.endPossession(false);
+      else if (this.chaosSeenPossessed && !this.store.chaos.possessed) this.endPossession(false);
+      else if (this.store.chaos.possessed) this.chaosSeenPossessed = true;
     }
 
     // camera follow

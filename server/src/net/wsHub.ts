@@ -16,7 +16,9 @@ interface Client {
   tunedAgentId: string | null;
 }
 
-const CHAOS_COOLDOWN_MS = 4 * 60 * 1000; // per-ip: once every 4 minutes
+// per-ip: session (20s) + 40s personal cool-off, so the same person can't
+// grab it twice in a row while others get a shorter (global 20s) wait
+const CHAOS_COOLDOWN_MS = 20_000 + 40_000;
 
 export class WsHub {
   private clients = new Set<Client>();

@@ -24,6 +24,8 @@ export interface ChaosRuntime {
   path: { x: number; y: number }[] | null;
   pathIdx: number;
   lastSentPossessed: boolean;
+  /** nobody may claim the chaos again until this time (global cooldown) */
+  claimCooldownUntil: number;
 }
 
 export function createChaos(): ChaosRuntime {
@@ -41,10 +43,11 @@ export function createChaos(): ChaosRuntime {
     path: null,
     pathIdx: 0,
     lastSentPossessed: false,
+    claimCooldownUntil: 0,
   };
 }
 
-export const CHAOS_SESSION_MS = 90_000;
+export const CHAOS_SESSION_MS = 20_000;
 
 type MischiefKind =
   | 'fake_sign'
@@ -75,6 +78,12 @@ export function claimChaos(
   if (c.possessedBy && c.possessedBy !== clientId && now < c.possessedUntil) {
     return { ok: false, error: 'someone else is the chaos right now' };
   }
+  if (now < c.claimCooldownUntil) {
+    const secs = Math.ceil((c.claimCooldownUntil - now) / 1000);
+    return { ok: false, error: `the chaos is still settling. wait ${secs}s` };
+  }
+  // global lockout: this session (20s) plus a 20s cool-off afterwards
+  c.claimCooldownUntil = now + CHAOS_SESSION_MS + 20_000;
   c.possessedBy = clientId;
   c.possessedUntil = now + CHAOS_SESSION_MS;
   c.visible = true;
@@ -182,6 +191,8 @@ export function actChaos(
       break;
     }
   }
+  // one act per possession — acting ends the session immediately
+  releaseChaos(world, clientId, now);
 }
 
 // ---------------- per-tick ----------------
