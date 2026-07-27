@@ -110,7 +110,9 @@ export function openReader(
   const typeOn = opts.typeOn ?? true;
   const panel = $('reader');
   const linesEl = $('reader-lines');
+  // terminals render as a CRT; everything else as a centered physical document
   panel.classList.toggle('terminal', !!opts.terminal);
+  panel.classList.toggle('doc', !opts.terminal);
   $('reader-title').textContent = title;
   panel.classList.add('open');
   if (typeTimer) clearInterval(typeTimer);

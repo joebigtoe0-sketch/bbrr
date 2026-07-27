@@ -60,7 +60,7 @@ world.onEvidenceClick = (id) => {
     const id = e.id.slice(0, 4).toUpperCase();
     openReader(`◉ TERMINAL // node ${id}`, lines.length ? lines : ['[no entries — the cursor blinks]'], { terminal: true });
   } else {
-    openReader(e.kind.toUpperCase(), [e.text ?? '(blank)', ...(e.authorName ? ['', `— ${e.authorName}`] : [])]);
+    openReader(e.kind.toUpperCase(), [e.text ?? '(blank)', ...(e.authorName ? ['', `— ${e.authorName}`] : [])], { typeOn: false });
   }
 };
 
