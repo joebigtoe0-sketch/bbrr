@@ -1,7 +1,6 @@
 import { EDGE, AGENT_SPEED } from '@backrooms/shared';
 import type { World } from './world.js';
 import { findPath } from './pathfinding.js';
-import { randInt } from './rng.js';
 
 /**
  * The Chaos Agent: a glitchy body that sabotages the maze. Normally an
@@ -26,6 +25,8 @@ export interface ChaosRuntime {
   lastSentPossessed: boolean;
   /** nobody may claim the chaos again until this time (global cooldown) */
   claimCooldownUntil: number;
+  /** false until the possessor's first click places the body */
+  placed: boolean;
 }
 
 export function createChaos(): ChaosRuntime {
@@ -44,27 +45,11 @@ export function createChaos(): ChaosRuntime {
     pathIdx: 0,
     lastSentPossessed: false,
     claimCooldownUntil: 0,
+    placed: false,
   };
 }
 
 export const CHAOS_SESSION_MS = 20_000;
-
-type MischiefKind =
-  | 'fake_sign'
-  | 'misleading_note'
-  | 'lock_door'
-  | 'fake_terminal_log'
-  | 'impersonate_graffiti'
-  | 'move_sign';
-
-function pickMischief(rng: number): MischiefKind {
-  if (rng < 0.25) return 'fake_sign';
-  if (rng < 0.45) return 'misleading_note';
-  if (rng < 0.6) return 'lock_door';
-  if (rng < 0.75) return 'fake_terminal_log';
-  if (rng < 0.9) return 'impersonate_graffiti';
-  return 'move_sign';
-}
 
 // ---------------- possession API (called from wsHub) ----------------
 
@@ -86,19 +71,11 @@ export function claimChaos(
   c.claimCooldownUntil = now + CHAOS_SESSION_MS + 20_000;
   c.possessedBy = clientId;
   c.possessedUntil = now + CHAOS_SESSION_MS;
-  c.visible = true;
-  c.dirty = true;
   c.moveTarget = null;
   c.path = null;
-  // manifest at the current activity if it was off-screen/idle
-  if (!c.x && !c.y) {
-    const centre = world.activityCentroid();
-    const spot = world.maze.nearestWalkable(Math.floor(centre.x), Math.floor(centre.y), 20);
-    if (spot) {
-      c.x = spot.x + 0.5;
-      c.y = spot.y + 0.5;
-    }
-  }
+  c.placed = false; // it does not exist until the possessor clicks the map
+  c.visible = false;
+  c.dirty = true;
   return { ok: true, until: c.possessedUntil };
 }
 
@@ -120,6 +97,17 @@ export function moveChaos(world: World, clientId: string, x: number, y: number) 
   if (c.possessedBy !== clientId) return;
   const spot = world.maze.nearestWalkable(Math.floor(x), Math.floor(y), 6);
   if (!spot) return;
+  if (!c.placed) {
+    // materialise where the watcher first clicks
+    c.x = spot.x + 0.5;
+    c.y = spot.y + 0.5;
+    c.placed = true;
+    c.visible = true;
+    c.path = null;
+    c.moveTarget = null;
+    c.dirty = true;
+    return;
+  }
   c.moveTarget = spot;
   const path = findPath({
     startX: Math.floor(c.x),
@@ -141,7 +129,7 @@ export function actChaos(
   now: number,
 ) {
   const c = world.chaosRt;
-  if (c.possessedBy !== clientId) return;
+  if (c.possessedBy !== clientId || !c.placed) return;
   const gx = Math.floor(c.x);
   const gy = Math.floor(c.y);
   const tick = world.tick;
@@ -231,99 +219,10 @@ export function tickChaos(world: World, now: number, dtMs: number) {
     }
   }
 
-  // ---- autonomous scheduler ----
-  // finish an act: vanish
+  // autonomous chaos is disabled — the thing only exists when a watcher
+  // possesses it. handle its fade-out and idle otherwise.
   if (c.visible && now >= c.actUntil) {
     c.visible = false;
     c.dirty = true;
-  }
-  if (now < c.nextActAt || now < c.cooldownUntil) return;
-
-  const living = [...world.agents.values()].filter((a) => a.state !== 'dead');
-  if (living.length === 0) {
-    c.nextActAt = now + 30000;
-    return;
-  }
-
-  c.nextActAt = now + randInt(Math.random, 45000, 90000);
-  const victim = living[Math.floor(Math.random() * living.length)]!;
-  const kind = pickMischief(Math.random());
-
-  // manifest near the victim (an eldritch thing; it does not walk the long way)
-  const spot = world.maze.nearestWalkable(
-    Math.floor(victim.x + (Math.random() - 0.5) * 16),
-    Math.floor(victim.y + (Math.random() - 0.5) * 16),
-  );
-  if (!spot) return;
-  c.x = spot.x + 0.5;
-  c.y = spot.y + 0.5;
-  c.visible = true;
-  c.actUntil = now + 4000;
-  c.dirty = true;
-
-  const tick = world.tick;
-  switch (kind) {
-    case 'fake_sign': {
-      // a forest of signs stops being a lie and starts being clutter
-      const nearbySigns = world.evidence
-        .within(spot.x, spot.y, 10)
-        .filter((e) => e.kind === 'sign').length;
-      if (nearbySigns >= 2) {
-        world.evidence.create('note', spot.x, spot.y, tick, {
-          text: world.chaosText.next('note'),
-        });
-        break;
-      }
-      const arrows = ['←', '→', '↑', '↓'];
-      world.evidence.create('sign', spot.x, spot.y, tick, {
-        text: `EXIT ${arrows[Math.floor(Math.random() * 4)]}`,
-        meta: { fake: true },
-      });
-      break;
-    }
-    case 'misleading_note': {
-      world.evidence.create('note', spot.x, spot.y, tick, {
-        text: world.chaosText.next('note'),
-      });
-      break;
-    }
-    case 'lock_door': {
-      const edge = world.maze.findEdge(
-        Math.floor(victim.x),
-        Math.floor(victim.y),
-        12,
-        (v) => v === EDGE.DoorOpen,
-      );
-      if (edge) world.maze.setEdge(edge.gx, edge.gy, edge.dir, EDGE.DoorLocked);
-      break;
-    }
-    case 'fake_terminal_log': {
-      const crt = world.evidence.nearest('crt', victim.x, victim.y, 24);
-      if (crt) {
-        const lines = ((crt.meta?.lines as string[] | undefined) ?? []).slice(-9);
-        lines.push(`[SYS] ${world.chaosText.next('terminal')}`);
-        crt.meta = { ...crt.meta, lines };
-        world.evidence.update(crt);
-      }
-      break;
-    }
-    case 'impersonate_graffiti': {
-      const other = living[Math.floor(Math.random() * living.length)]!;
-      world.evidence.create('graffiti', spot.x, spot.y, tick, {
-        text: world.chaosText.next('graffiti'),
-        authorName: other.name, // signed with a living agent's name — but not by them
-        meta: { impersonation: true },
-      });
-      break;
-    }
-    case 'move_sign': {
-      const sign = world.evidence.nearest('sign', victim.x, victim.y, 24);
-      if (sign?.text) {
-        const arrows = ['←', '→', '↑', '↓'];
-        sign.text = `EXIT ${arrows[Math.floor(Math.random() * 4)]}`;
-        world.evidence.update(sign);
-      }
-      break;
-    }
   }
 }

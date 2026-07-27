@@ -1126,7 +1126,7 @@ export class WorldScene extends Phaser.Scene {
       hud.classList.add('open');
       btn.disabled = true;
       this.followAgentId = null;
-      toast('you are the chaos now. click the floor to move.');
+      toast('you are the chaos. click somewhere on the map to appear.');
     };
   }
 
