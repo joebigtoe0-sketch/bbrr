@@ -129,8 +129,10 @@ export function openReader(
   typeTimer = setInterval(() => {
     i += 3;
     linesEl.textContent = full.slice(0, i) + (i < full.length ? '█' : '');
+    linesEl.scrollTop = linesEl.scrollHeight; // keep the newest line in view
     if (i >= full.length) {
       linesEl.textContent = full;
+      linesEl.scrollTop = linesEl.scrollHeight;
       if (typeTimer) clearInterval(typeTimer);
     }
   }, 12);
@@ -196,6 +198,15 @@ export function appendLog(text: string, cls = '', opts?: { name?: string; color?
   const t = new Date().toLocaleTimeString([], { hour12: false });
   logEntries.unshift({ t, text, cls, name: opts?.name, color: opts?.color });
   if (logEntries.length > 300) logEntries.pop();
+  if (rightTab === 'log') renderLog();
+}
+
+/** seed the LOG with historical entries (oldest-first) beneath whatever is live */
+export function primeLogHistory(items: LogEntry[]) {
+  // history is older than anything already streamed in, so it goes at the bottom;
+  // reverse to newest-first to match logEntries' ordering
+  for (const e of [...items].reverse()) logEntries.push(e);
+  if (logEntries.length > 300) logEntries.length = 300;
   if (rightTab === 'log') renderLog();
 }
 

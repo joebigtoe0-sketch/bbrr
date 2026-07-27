@@ -6,7 +6,7 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db/db.js';
 import { AdminDebugBody, AdminEventBody, AdminTweetBody, SpawnAgentBody } from '@backrooms/shared';
 import { config, isDev } from '../config.js';
-import { agentRepo, caseFileRepo, tweetRepo } from '../db/repo.js';
+import { agentRepo, caseFileRepo, eventRepo, thoughtRepo, tweetRepo } from '../db/repo.js';
 import type { World } from '../sim/world.js';
 import type { BrainScheduler } from '../brain/scheduler.js';
 import type { XClient } from '../social/x.js';
@@ -116,6 +116,28 @@ export function buildRest(world: World, scheduler: BrainScheduler, x?: XClient):
 
   app.get('/api/tweets', (_req, res) => {
     res.json({ tweets: tweetRepo.latest(50) });
+  });
+
+  // the LOG's back-history: recent thoughts + world events merged chronologically,
+  // so a spectator who just tuned in still sees what led up to now
+  app.get('/api/log', (_req, res) => {
+    const N = 160;
+    const thoughts = thoughtRepo.recent(N).map((r) => ({
+      kind: 'thought' as const,
+      at: r.created_at,
+      name: r.name,
+      hue: r.hue,
+      text: r.text,
+      mindState: r.mind_state,
+    }));
+    const events = eventRepo.recent(N).map((r) => ({
+      kind: 'event' as const,
+      at: r.created_at,
+      type: r.type,
+      payload: JSON.parse(r.payload_json) as Record<string, unknown>,
+    }));
+    const entries = [...thoughts, ...events].sort((a, b) => a.at - b.at).slice(-N);
+    res.json({ entries });
   });
 
   app.get('/api/records', (_req, res) => {

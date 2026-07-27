@@ -137,6 +137,16 @@ export const thoughtRepo = {
       .prepare('SELECT text, mind_state FROM thoughts WHERE agent_id = ? ORDER BY id DESC LIMIT ?')
       .all(agentId, n) as { text: string; mind_state: string }[];
   },
+  /** recent thoughts across everyone, joined to the author's name + hue */
+  recent(limit: number): { text: string; mind_state: string; created_at: number; name: string | null; hue: number | null }[] {
+    return db
+      .prepare(
+        `SELECT t.text, t.mind_state, t.created_at, a.name, a.hue
+         FROM thoughts t LEFT JOIN agents a ON a.id = t.agent_id
+         ORDER BY t.id DESC LIMIT ?`,
+      )
+      .all(limit) as { text: string; mind_state: string; created_at: number; name: string | null; hue: number | null }[];
+  },
 };
 
 // ---------- evidence ----------
@@ -250,5 +260,10 @@ const eventInsertStmt = db.prepare(
 export const eventRepo = {
   insert(type: string, payload: unknown, tick: number) {
     eventInsertStmt.run(type, JSON.stringify(payload), tick, Date.now());
+  },
+  recent(limit: number): { type: string; payload_json: string; created_at: number }[] {
+    return db
+      .prepare('SELECT type, payload_json, created_at FROM world_events ORDER BY id DESC LIMIT ?')
+      .all(limit) as { type: string; payload_json: string; created_at: number }[];
   },
 };

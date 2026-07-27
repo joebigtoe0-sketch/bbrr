@@ -93,8 +93,8 @@
 
     /* ---------- terminal mode: a CRT you're peering into ---------- */
     #reader.terminal {
-      right: auto; top: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);
-      width: min(680px, 88vw); max-height: 76vh;
+      right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(680px, 88vw); height: min(560px, 80vh);
       background: #030b05;
       border: 2px solid #0c3a1c; border-radius: 10px;
       padding: 14px; overflow: hidden;
@@ -102,6 +102,8 @@
         inset 0 0 90px rgba(0, 255, 90, 0.05);
       animation: crtOn 0.28s ease-out;
     }
+    /* fixed-size screen: the buffer scrolls inside it when there are more entries */
+    #reader.terminal .lines { flex: 1 1 auto; min-height: 0; }
     @keyframes crtOn { from { opacity: 0; transform: translate(-50%, -50%) scaleY(0.02); } to { opacity: 1; transform: translate(-50%, -50%) scaleY(1); } }
     #reader.terminal::after {
       content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 8px;

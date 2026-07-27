@@ -6,6 +6,7 @@ import {
   initSpawnModal,
   openReader,
   playTuneIn,
+  primeLogHistory,
   refreshDeaths,
   refreshTweets,
   renderAgentList,
@@ -146,33 +147,76 @@ function pickDirectorTarget(force: boolean) {
 setInterval(() => pickDirectorTarget(false), 1500);
 
 // ---------------- log feed ----------------
+// the visible text/style for a world event — shared by live events and history
+function formatWorldEvent(type: string, p: Record<string, string>): { text: string; cls: string } | null {
+  switch (type) {
+    case 'agent_spawned': return { text: `+ ${p.name} entered the maze (${p.objective})`, cls: '' };
+    case 'agent_died': return { text: `☠ ${p.name} — ${p.cause}`, cls: 'death' };
+    case 'hunt_started': return { text: `⚠ the thing is hunting ${p.name}`, cls: 'hunt' };
+    case 'terminal_post': return { text: `[POST] ${p.name}: ${p.text}`, cls: '' };
+    case 'maze_tweet': return { text: `🕳 ${p.text}`, cls: 'tweet' };
+    case 'incoming_tweet': return { text: `🐦 @${p.handle}: ${p.text}`, cls: 'tweet' };
+    case 'viral_post': return { text: '⚡ attention surge — a sector lights up', cls: '' };
+    case 'buyback': return { text: '💡 buyback: power returns', cls: '' };
+    case 'corridor_collapse': return { text: '🔥 burn: hallways collapsed', cls: '' };
+    case 'airdrop': return { text: '📦 airdrop: crates fell', cls: '' };
+    case 'crate_drop': return { text: '📦 a supply crate appeared', cls: '' };
+    case 'liquidity_up': return { text: '🌊 the maze grew', cls: '' };
+    case 'door_unlock': return { text: '🔓 a door unlocked', cls: '' };
+    default: return null;
+  }
+}
+
 store.onWorldEvent = (e: WorldEvent) => {
   const p = e.payload as Record<string, string>;
+  const f = formatWorldEvent(e.type, p);
+  if (f) appendLog(f.text, f.cls);
+  // live-only side effects
   switch (e.type) {
-    case 'agent_spawned': appendLog(`+ ${p.name} entered the maze (${p.objective})`); break;
     case 'agent_died':
-      appendLog(`☠ ${p.name} — ${p.cause}`, 'death'); toast(`☠ ${p.name}`);
+      toast(`☠ ${p.name}`);
       if (p.agentId === tunedId) deathHoldUntil = performance.now() + 3200;
       break;
     case 'hunt_started':
-      appendLog(`⚠ the thing is hunting ${p.name}`, 'hunt'); toast(`⚠ hunting ${p.name}`);
+      toast(`⚠ hunting ${p.name}`);
       if (directorOn) {
         const hunted = [...store.agents.values()].find((a) => a.name === p.name);
         if (hunted) { lastDirectorSwitch = performance.now(); tuneIn(hunted.id); }
       }
       break;
-    case 'terminal_post': appendLog(`[POST] ${p.name}: ${p.text}`); break;
-    case 'maze_tweet': appendLog(`🕳 ${p.text}`, 'tweet'); void refreshTweets(); break;
-    case 'incoming_tweet': appendLog(`🐦 @${p.handle}: ${p.text}`, 'tweet'); break;
-    case 'viral_post': appendLog('⚡ attention surge — a sector lights up'); break;
-    case 'buyback': appendLog('💡 buyback: power returns'); break;
-    case 'corridor_collapse': appendLog('🔥 burn: hallways collapsed'); break;
-    case 'airdrop': appendLog('📦 airdrop: crates fell'); break;
-    case 'crate_drop': appendLog('📦 a supply crate appeared'); break;
-    case 'liquidity_up': appendLog('🌊 the maze grew'); break;
-    case 'door_unlock': appendLog('🔓 a door unlocked'); break;
+    case 'maze_tweet': void refreshTweets(); break;
   }
 };
+
+// pull the recent history from the DB so the LOG isn't empty on arrival
+interface LogHistItem { kind: string; at: number; name?: string; hue?: number; text: string; mindState?: string; type?: string; payload?: Record<string, string> }
+async function loadLogHistory() {
+  try {
+    const res = await fetch('/api/log');
+    const { entries } = (await res.json()) as { entries: LogHistItem[] };
+    const batch: { t: string; text: string; cls: string; name?: string; color?: string }[] = [];
+    for (const e of entries) {
+      const t = new Date(e.at).toLocaleTimeString([], { hour12: false });
+      if (e.kind === 'thought') {
+        batch.push({
+          t,
+          text: e.text,
+          cls: `thought ${e.mindState ?? ''}`.trim(),
+          name: `${e.name ?? '???'} thinks:`,
+          color: `hsl(${e.hue ?? 45}, 65%, 68%)`,
+        });
+      } else {
+        const f = formatWorldEvent(e.type ?? '', e.payload ?? {});
+        if (f) batch.push({ t, text: f.text, cls: f.cls });
+      }
+    }
+    // entries are oldest-first; prime them beneath whatever already streamed in
+    primeLogHistory(batch);
+  } catch {
+    // server restarting — no history is fine
+  }
+}
+void loadLogHistory();
 
 // ---------------- chunk subscription (camera-driven) ----------------
 let lastSub = '';
