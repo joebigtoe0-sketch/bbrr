@@ -155,7 +155,7 @@ function formatWorldEvent(type: string, p: Record<string, string>): { text: stri
     case 'hunt_started': return { text: `⚠ the thing is hunting ${p.name}`, cls: 'hunt' };
     case 'terminal_post': return { text: `[POST] ${p.name}: ${p.text}`, cls: '' };
     case 'maze_tweet': return { text: `🕳 ${p.text}`, cls: 'tweet' };
-    case 'incoming_tweet': return { text: `🐦 @${p.handle}: ${p.text}`, cls: 'tweet' };
+    case 'incoming_tweet': return { text: `𝕏 @${p.handle}: ${p.text}`, cls: 'tweet' };
     case 'viral_post': return { text: '⚡ attention surge — a sector lights up', cls: '' };
     case 'buyback': return { text: '💡 buyback: power returns', cls: '' };
     case 'corridor_collapse': return { text: '🔥 burn: hallways collapsed', cls: '' };

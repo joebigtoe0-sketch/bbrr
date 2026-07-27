@@ -491,16 +491,45 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
     a.nextWanderAt = now + 900 + Math.random() * 1800; // amble, brief pause, amble
     const gx = Math.floor(a.x);
     const gy = Math.floor(a.y);
-    const dirs = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ];
-    const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)]!;
-    const steps = 2 + Math.floor(Math.random() * 3); // 2-4 tiles
-    const spot = world.maze.nearestWalkable(gx + dx! * steps, gy + dy! * steps, 3);
-    if (spot && (spot.x !== gx || spot.y !== gy)) startPath(world, a, spot.x, spot.y);
+    let target: { x: number; y: number } | null = null;
+
+    // social drift: often head toward the nearest neighbour so they actually run
+    // into each other (and can then see + talk). Only when they're not already
+    // together, so they mill around rather than pile up.
+    if (Math.random() < 0.5) {
+      let near: AgentRuntime | null = null;
+      let nd = Infinity;
+      for (const o of world.agents.values()) {
+        if (o.id === a.id || o.state === 'dead') continue;
+        const d = Math.hypot(o.x - a.x, o.y - a.y);
+        if (d < nd) {
+          nd = d;
+          near = o;
+        }
+      }
+      if (near && nd > 3 && nd < 24) {
+        const dx = near.x - a.x;
+        const dy = near.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const tx = Math.floor(near.x - (dx / len) * 1.5); // stop a step short of them
+        const ty = Math.floor(near.y - (dy / len) * 1.5);
+        target = world.maze.nearestWalkable(tx, ty, 3);
+      }
+    }
+
+    if (!target) {
+      const dirs = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ];
+      const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)]!;
+      const steps = 2 + Math.floor(Math.random() * 3); // 2-4 tiles
+      target = world.maze.nearestWalkable(gx + dx! * steps, gy + dy! * steps, 3);
+    }
+
+    if (target && (target.x !== gx || target.y !== gy)) startPath(world, a, target.x, target.y);
   }
 
   // stress integration: the whole maze is dark now — their flashlights keep

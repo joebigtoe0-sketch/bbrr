@@ -50,12 +50,20 @@ const THOUGHTS_MONSTER: string[] = [
 
 function objectiveTable(objective: Objective): WeightedAction[] {
   const base: WeightedAction[] = [
-    { w: 30, make: () => ({ type: 'move', target: 'toward_unexplored' }) },
+    { w: 26, make: () => ({ type: 'move', target: 'toward_unexplored' }) },
     { w: 8, make: (_o, r) => ({ type: 'move', target: pick(r, ['north', 'south', 'east', 'west'] as const) }) },
     { w: 8, make: (o, r) => ({ type: 'write_graffiti', text: pick(r, GRAFFITI[objective]!) }) },
     { w: 6, make: (o, r) => ({ type: 'use_terminal', text: pick(r, TERMINAL[objective]!) }) },
     { w: 6, make: () => ({ type: 'search' }) },
     { w: 4, make: () => ({ type: 'rest' }) },
+    // if someone's actually in sight, greet them — everyone, not just socials
+    {
+      w: 16,
+      make: (o, r) =>
+        o.nearbyAgents.length > 0
+          ? { type: 'say', toAgentName: o.nearbyAgents[0]!.name, text: pick(r, GREET) }
+          : { type: 'move', target: 'toward_unexplored' },
+    },
   ];
   switch (objective) {
     case 'famous':
@@ -93,6 +101,15 @@ function objectiveTable(objective: Objective): WeightedAction[] {
   }
   return base;
 }
+
+const GREET: string[] = [
+  'Hey — you\'re real, right? Say something back.',
+  'Another one. Thank god. How long have you been in here?',
+  'Wait, stop — do you know the way out?',
+  'You hear the humming too? Tell me you hear it.',
+  'Stay with me a minute. It\'s safer with two.',
+  'What\'s your name? I need to remember someone real.',
+];
 
 const SAY: Record<string, string[]> = {
   cult: ['The rooms provide, friend. Walk with me.', 'Have you heard the pattern in the hum? Let me show you.'],

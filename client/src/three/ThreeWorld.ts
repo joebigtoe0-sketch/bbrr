@@ -585,17 +585,7 @@ export class ThreeWorld {
         m.material = mat;
       }
     });
-    // a small handheld torch. Parented to the (unscaled) root at roughly hand
-    // height and pointing forward-and-down, so it reads as held but can never
-    // clip through the hand mesh the way the bone-parented prop did. The root
-    // rotates with the agent's facing, so it always points where they walk.
-    const fl = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.055, 0.32, 8),
-      new THREE.MeshStandardMaterial({ color: 0x1c1c1c, emissive: 0x6a5410, emissiveIntensity: 0.5 }),
-    );
-    fl.position.set(0.17, 0.58, 0.18);
-    fl.rotation.x = Math.PI / 2 + 0.4; // point forward, tipped down
-    o.root.add(fl);
+    // (no held-flashlight prop — the beam itself sells it; the mesh looked odd)
     o.root.add(model);
     o.model = model;
     const mixer = new THREE.AnimationMixer(model);
