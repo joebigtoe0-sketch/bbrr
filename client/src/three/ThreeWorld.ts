@@ -21,6 +21,7 @@ interface ChunkMesh {
 interface AgentObj {
   sprite: THREE.Mesh;
   spot: THREE.SpotLight;
+  glow: THREE.PointLight;
   target: THREE.Object3D;
   gx: number;
   gy: number;
@@ -217,7 +218,7 @@ export class ThreeWorld {
     s.onSnapshot = () => {
       for (const a of this.agents.values()) {
         this.dropBillboard(a.sprite);
-        this.scene.remove(a.spot, a.target);
+        this.scene.remove(a.spot, a.target, a.glow);
       }
       this.agents.clear();
       for (const a of s.agents.values()) this.upsertAgent(a);
@@ -238,7 +239,7 @@ export class ThreeWorld {
       const a = this.agents.get(id);
       if (a) {
         this.dropBillboard(a.sprite);
-        this.scene.remove(a.spot, a.target);
+        this.scene.remove(a.spot, a.target, a.glow);
         this.agents.delete(id);
       }
     };
@@ -369,15 +370,18 @@ export class ThreeWorld {
       const sprite = this.makeBillboard(this.agentTexture(a.hue), 0.75, 1.05, { emissive: hueCol });
       sprite.position.set(a.x, 0, a.y);
       this.scene.add(sprite);
-      const spot = new THREE.SpotLight(0xffe9b8, 140, 9, Math.PI / 4.5, 0.45, 1.0);
+      const spot = new THREE.SpotLight(0xffe4ad, 90, 9, Math.PI / 3.4, 0.6, 1.1);
       spot.castShadow = true;
       spot.shadow.mapSize.set(512, 512);
-      spot.shadow.camera.near = 0.2;
+      spot.shadow.camera.near = 0.15;
       spot.shadow.camera.far = 11;
+      spot.shadow.bias = -0.002;
       const target = new THREE.Object3D();
-      this.scene.add(spot, target);
+      // a soft personal pool so light begins right at the agent's feet
+      const glow = new THREE.PointLight(0xffe0a6, 6, 3.2, 1.6);
+      this.scene.add(spot, target, glow);
       spot.target = target;
-      o = { sprite, spot, target, gx: a.x, gy: a.y, tx: a.x, ty: a.y, facing: a.facing, battery: a.battery };
+      o = { sprite, spot, glow, target, gx: a.x, gy: a.y, tx: a.x, ty: a.y, facing: a.facing, battery: a.battery };
       this.agents.set(a.id, o);
     }
     o.tx = a.x;
@@ -401,20 +405,29 @@ export class ThreeWorld {
   private upsertEvidence(e: EvidenceArtifact) {
     const existing = this.evidence.get(e.id);
     if (existing) this.scene.remove(existing);
-    const url = EVIDENCE_TEX[e.kind];
     let obj: THREE.Object3D;
-    if (url) {
-      obj = this.makeBillboard(this.tex(url), 0.7, 0.9, { emissive: e.kind === 'crt' ? 0x0a3315 : 0 });
-    } else {
-      // graffiti / notes: a small flat marker on the floor
-      const geo = new THREE.PlaneGeometry(0.5, 0.5);
+    if (e.kind === 'note' || e.kind === 'printout') {
+      // a paper scrap lying on the floor
+      const geo = new THREE.PlaneGeometry(0.45, 0.55);
       geo.rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshBasicMaterial({
-        color: e.kind === 'graffiti' ? 0xc23b2e : 0xd8d0a0,
-        transparent: true,
-        opacity: 0.8,
+      geo.rotateY((e.id.charCodeAt(0) % 8) * 0.3);
+      obj = new THREE.Mesh(
+        geo,
+        new THREE.MeshStandardMaterial({ map: this.tex('/sprites/generated/note.png'), transparent: true, alphaTest: 0.3, roughness: 1 }),
+      );
+    } else if (e.kind === 'graffiti') {
+      // a small spray splash on the floor
+      const geo = new THREE.PlaneGeometry(0.55, 0.55);
+      geo.rotateX(-Math.PI / 2);
+      obj = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: 0xc23b2e, transparent: true, opacity: 0.7 }),
+      );
+    } else {
+      const url = EVIDENCE_TEX[e.kind];
+      obj = this.makeBillboard(this.tex(url ?? '/sprites/generated/note.png'), 0.7, 0.9, {
+        emissive: e.kind === 'crt' ? 0x0a3315 : 0,
       });
-      obj = new THREE.Mesh(geo, mat);
     }
     obj.position.set(e.x + 0.5, 0.02, e.y + 0.5);
     obj.userData.evidenceId = e.id;
@@ -454,16 +467,10 @@ export class ThreeWorld {
     });
     window.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      const dx = e.clientX - lx;
-      const dy = e.clientY - ly;
+      moved += Math.abs(e.clientX - lx) + Math.abs(e.clientY - ly);
       lx = e.clientX;
       ly = e.clientY;
-      moved += Math.abs(dx) + Math.abs(dy);
-      // pan on the ground plane (screen-right and screen-down map to iso axes)
-      const k = (VIEW_SIZE * 2) / window.innerHeight / this.zoom;
-      this.followId = null;
-      this.target.x -= (dx * 0.5 - dy) * k * 0.5;
-      this.target.z -= (-dx * 0.5 - dy) * k * 0.5;
+      // camera is locked to the followed agent — no manual panning
     });
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -539,17 +546,25 @@ export class ThreeWorld {
       o.gx += (o.tx - o.gx) * 0.2;
       o.gy += (o.ty - o.gy) * 0.2;
       o.sprite.position.set(o.gx, 0, o.gy);
-      const bf = o.battery <= 0 ? 0.3 : 0.4 + 0.6 * (o.battery / 100);
-      o.spot.position.set(o.gx, WALL_H + 0.4, o.gy);
-      o.spot.intensity = 160 * bf;
-      o.spot.distance = 10 * bf;
+      const bf = o.battery <= 0 ? 0.28 : 0.4 + 0.6 * (o.battery / 100);
       const fd = FACE[o.facing] ?? [0, 1];
-      o.target.position.set(o.gx + fd[0] * 3, 0, o.gy + fd[1] * 3);
+      // spotlight sits just above the agent, aimed a short way ahead so the
+      // pool starts AT them and reaches forward
+      o.spot.position.set(o.gx, 1.05, o.gy);
+      o.spot.intensity = 105 * bf;
+      o.spot.distance = 9 * bf;
+      o.target.position.set(o.gx + fd[0] * 2.2, 0, o.gy + fd[1] * 2.2);
+      o.glow.position.set(o.gx, 0.7, o.gy);
+      o.glow.intensity = 7 * bf;
     }
-    // follow camera
+    // camera is always locked to an agent; default to the first if none chosen
+    if (!this.followId || !this.agents.has(this.followId)) {
+      const first = [...this.agents.keys()][0];
+      if (first) this.followId = first;
+    }
     if (this.followId) {
       const a = this.agents.get(this.followId);
-      if (a) this.target.lerp(new THREE.Vector3(a.gx, 0, a.gy), 0.1);
+      if (a) this.target.lerp(new THREE.Vector3(a.gx, 0, a.gy), 0.12);
     }
     this.cam.zoom = this.zoom;
     this.cam.updateProjectionMatrix();

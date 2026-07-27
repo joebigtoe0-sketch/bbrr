@@ -46,21 +46,6 @@ import { writeCaseFile } from '../brain/caseFile.js';
 
 type Delta = Omit<z.infer<typeof DeltaMsg>, 't'>;
 
-const AMBIENT_NOTES = [
-  'day 34. the hum changed pitch again. counting doors until it changes back.',
-  'if you find this: the water in the walls is not water.',
-  'we agreed to meet at the humming room. nobody came. nobody ever came.',
-  'DO NOT SLEEP ON THE CARPET',
-  'the lights know. keep smiling.',
-  'i measured this room twice. it was bigger the second time.',
-  'tally marks are useless. the walls erase them when you blink.',
-  'to whoever comes after me: the exit signs are a rota. they take turns lying.',
-  'heard my own voice two rooms over. did not go look.',
-  'inventory: 3 cans, 1 lighter, 0 reasons.',
-  'if the printer prints on its own, do not read page two.',
-  'someone keeps moving the terminals. or the rooms. or me.',
-] as const;
-
 const NAME_POOL = [
   'Vera', 'Kaz', 'Moth', 'Ida', 'Sol', 'Rune', 'Pell', 'Nyx', 'Aster', 'Grey',
   'Wren', 'Tallow', 'Juno', 'Harrow', 'Lux', 'Fen', 'Orrin', 'Sable', 'Quill', 'Vesper',
@@ -609,15 +594,6 @@ export class World {
             .sort(() => rng() - 0.5)[0];
           if (near) this.evidence.create('printer', near.x, near.y, this.tick, {});
         }
-        if (rng() < 0.5) {
-          const near = floorCells
-            .filter((c2) => Math.abs(c2.x - s.x) + Math.abs(c2.y - s.y) <= 3)
-            .sort(() => rng() - 0.5)[0];
-          if (near)
-            this.evidence.create('note', near.x, near.y, this.tick, {
-              text: AMBIENT_NOTES[Math.floor(rng() * AMBIENT_NOTES.length)]!,
-            });
-        }
       }
       // planted mysteries: rare anomalies the maze does not explain
       if (rng() < 0.035) {
@@ -631,13 +607,6 @@ export class World {
         this.evidence.create('anomaly', s.x, s.y, this.tick, {
           text: texts[variant]!,
           meta: { variant },
-        });
-      }
-      // stray litter elsewhere
-      if (rng() < 0.3) {
-        const s = spot();
-        this.evidence.create('note', s.x, s.y, this.tick, {
-          text: AMBIENT_NOTES[Math.floor(rng() * AMBIENT_NOTES.length)]!,
         });
       }
       const dist = Math.max(Math.abs(c.cx), Math.abs(c.cy));
