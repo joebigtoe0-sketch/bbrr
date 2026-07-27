@@ -54,6 +54,18 @@
     </div>
 
     <div class="section">
+      <label>Incoming tweet — a mock @mention / reply the maze "hears"</label>
+      <div class="row">
+        <input id="tw-handle" type="text" placeholder="handle (no @)" value="tester" style="flex:0 0 130px" />
+        <input id="tw-text" type="text" placeholder="what they tweeted at us…" maxlength="280" />
+      </div>
+      <button id="send-tweet">🐦 SEND TWEET INTO THE MAZE</button>
+      <label>Post OUT to our X account (live mode posts for real)</label>
+      <input id="post-text" type="text" placeholder="what our account tweets…" maxlength="280" />
+      <button id="post-out">📣 POST TO X</button>
+    </div>
+
+    <div class="section">
       <label>Debug (dev only)</label>
       <div class="row">
         <input id="tp-x" type="number" placeholder="x" />

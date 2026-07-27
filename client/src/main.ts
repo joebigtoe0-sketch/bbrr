@@ -11,7 +11,7 @@ import {
   renderAgentList,
   toast,
 } from './ui/dom.js';
-import type { WorldEvent } from '@backrooms/shared';
+import type { Agent, WorldEvent } from '@backrooms/shared';
 
 const app = document.getElementById('app')!;
 const world = new ThreeWorld(app);
@@ -87,15 +87,67 @@ store.onSpeech = (agentId, text) => {
   appendLog(`${who}: "${text}"`, 'speech');
 };
 
+// ---------------- auto-director ----------------
+// when on, the camera follows wherever the drama is: proximity to the monster,
+// panic, someone being hunted. hunts snap instantly; otherwise it drifts on a
+// timer with hysteresis so it doesn't flicker between agents.
+let directorOn = false;
+let lastDirectorSwitch = 0;
+const dirBtn = document.getElementById('director') as HTMLButtonElement;
+dirBtn.onclick = () => {
+  directorOn = !directorOn;
+  dirBtn.classList.toggle('active', directorOn);
+  if (directorOn) pickDirectorTarget(true);
+};
+function agentDrama(a: Agent): number {
+  if (a.state === 'dead') return -1;
+  let s = 0;
+  const dm = Math.hypot(a.x - store.monster.x, a.y - store.monster.y);
+  if (dm < 3) s += 130;
+  else if (dm < 6) s += 90 - dm * 6;
+  else if (dm < 12) s += 34 - dm;
+  if (a.mindState === 'panicked') s += 60;
+  else if (a.mindState === 'stressed') s += 22;
+  else if (a.mindState === 'deceptive') s += 16;
+  return s;
+}
+function pickDirectorTarget(force: boolean) {
+  if (!directorOn) return;
+  const now = performance.now();
+  if (!force && now - lastDirectorSwitch < 4500) return;
+  let best: string | null = null;
+  let bestScore = -1;
+  let curScore = -1;
+  for (const a of store.agents.values()) {
+    const sc = agentDrama(a);
+    if (a.id === tunedId) curScore = sc;
+    if (sc > bestScore) { bestScore = sc; best = a.id; }
+  }
+  if (!best) return;
+  // only jump if the best is meaningfully more interesting than who we watch now
+  if (best !== tunedId && (force || bestScore > curScore + 15 || curScore < 0)) {
+    lastDirectorSwitch = now;
+    tuneIn(best);
+  }
+}
+setInterval(() => pickDirectorTarget(false), 1500);
+
 // ---------------- log feed ----------------
 store.onWorldEvent = (e: WorldEvent) => {
   const p = e.payload as Record<string, string>;
   switch (e.type) {
     case 'agent_spawned': appendLog(`+ ${p.name} entered the maze (${p.objective})`); break;
     case 'agent_died': appendLog(`☠ ${p.name} — ${p.cause}`, 'death'); toast(`☠ ${p.name}`); break;
-    case 'hunt_started': appendLog(`⚠ the thing is hunting ${p.name}`, 'hunt'); toast(`⚠ hunting ${p.name}`); break;
+    case 'hunt_started':
+      appendLog(`⚠ the thing is hunting ${p.name}`, 'hunt'); toast(`⚠ hunting ${p.name}`);
+      if (directorOn) {
+        const hunted = [...store.agents.values()].find((a) => a.name === p.name);
+        if (hunted) { lastDirectorSwitch = performance.now(); tuneIn(hunted.id); }
+      }
+      break;
     case 'terminal_post': appendLog(`[POST] ${p.name}: ${p.text}`); break;
     case 'maze_tweet': appendLog(`🕳 ${p.text}`, 'tweet'); void refreshTweets(); break;
+    case 'incoming_tweet': appendLog(`🐦 @${p.handle}: ${p.text}`, 'tweet'); break;
     case 'viral_post': appendLog('⚡ attention surge — a sector lights up'); break;
     case 'buyback': appendLog('💡 buyback: power returns'); break;
     case 'corridor_collapse': appendLog('🔥 burn: hallways collapsed'); break;
@@ -120,6 +172,25 @@ setInterval(() => {
   for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) coords.push({ cx: cx + dx, cy: cy + dy });
   sendWs({ t: 'subscribe_chunks', coords });
 }, 400);
+
+// ---------------- contract address ----------------
+// set once the token launches. left as a placeholder until then.
+const CONTRACT_ADDRESS = '';
+{
+  const val = document.getElementById('ca-val')!;
+  const copy = document.getElementById('ca-copy') as HTMLButtonElement;
+  val.textContent = CONTRACT_ADDRESS || 'not live yet';
+  if (!CONTRACT_ADDRESS) copy.disabled = true;
+  copy.onclick = async () => {
+    if (!CONTRACT_ADDRESS) return;
+    try {
+      await navigator.clipboard.writeText(CONTRACT_ADDRESS);
+      copy.textContent = 'COPIED';
+      copy.classList.add('copied');
+      setTimeout(() => { copy.textContent = 'COPY'; copy.classList.remove('copied'); }, 1400);
+    } catch { /* clipboard blocked */ }
+  };
+}
 
 // ---------------- chaos possession ----------------
 const $ = (id: string) => document.getElementById(id) as HTMLElement;

@@ -25,6 +25,21 @@ const EnvSchema = z.object({
   ADMIN_PASSWORD: z.string().default('change-me'),
   DB_PATH: z.string().default('backrooms.db'),
   NODE_ENV: z.string().default('development'),
+
+  // ---------- X / Twitter integration ----------
+  // 'mock' = no network; tweets come only from the admin panel and nothing is
+  // posted out. 'live' = post maze utterances to X and poll mentions/replies.
+  X_MODE: z.enum(['mock', 'live']).default('mock'),
+  X_HANDLE: z.string().default('backrooms'), // our account handle, no '@'
+  X_USER_ID: z.string().default(''), // numeric id of our account (for mentions lookup)
+  X_BEARER_TOKEN: z.string().default(''), // app bearer, for reading mentions
+  X_APP_KEY: z.string().default(''), // OAuth1.0a consumer key
+  X_APP_SECRET: z.string().default(''),
+  X_ACCESS_TOKEN: z.string().default(''), // OAuth1.0a user token (our account)
+  X_ACCESS_SECRET: z.string().default(''),
+  X_POLL_MS: z.coerce.number().default(90000), // how often to pull mentions
+  // post maze utterances out ('false' to disable; any other value = on)
+  X_POST_MAZE_TWEETS: z.string().default('true').transform((v) => v !== 'false'),
 });
 
 export const config = EnvSchema.parse(process.env);

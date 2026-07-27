@@ -87,6 +87,23 @@ $('force-deceiving').onclick = () =>
     value: 1,
   });
 
+$('send-tweet').onclick = () => {
+  const text = $<HTMLInputElement>('tw-text').value.trim();
+  if (!text) return log('tweet text is empty');
+  post('/api/admin/tweet', {
+    handle: $<HTMLInputElement>('tw-handle').value.trim() || 'tester',
+    text,
+  });
+  $<HTMLInputElement>('tw-text').value = '';
+};
+
+$('post-out').onclick = () => {
+  const text = $<HTMLInputElement>('post-text').value.trim();
+  if (!text) return log('post text is empty');
+  post('/api/admin/post', { text });
+  $<HTMLInputElement>('post-text').value = '';
+};
+
 $('full-reset').onclick = () => {
   if (!confirm('Wipe EVERYTHING? All agents, graffiti, corpses, terminal logs — the entire archive. A fresh maze boots with a new seed.')) return;
   if (!confirm('Last chance. This cannot be undone.')) return;

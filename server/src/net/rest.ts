@@ -4,11 +4,12 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db/db.js';
-import { AdminDebugBody, AdminEventBody, SpawnAgentBody } from '@backrooms/shared';
+import { AdminDebugBody, AdminEventBody, AdminTweetBody, SpawnAgentBody } from '@backrooms/shared';
 import { config, isDev } from '../config.js';
 import { agentRepo, caseFileRepo, tweetRepo } from '../db/repo.js';
 import type { World } from '../sim/world.js';
 import type { BrainScheduler } from '../brain/scheduler.js';
+import type { XClient } from '../social/x.js';
 
 const spawnBuckets = new Map<string, number[]>();
 const SPAWNS_PER_HOUR = 5;
@@ -34,7 +35,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-export function buildRest(world: World, scheduler: BrainScheduler): Express {
+export function buildRest(world: World, scheduler: BrainScheduler, x?: XClient): Express {
   const app = express();
   app.use(express.json());
 
@@ -87,6 +88,30 @@ export function buildRest(world: World, scheduler: BrainScheduler): Express {
     }
     const event = world.bus.emit(type, finalPayload);
     res.json({ ok: true, eventId: event.id });
+  });
+
+  // inject an inbound tweet — a mock mention/reply for testing how the agents
+  // react. In live X mode real mentions arrive automatically via the poller;
+  // this endpoint remains handy for manual injection.
+  app.post('/api/admin/tweet', requireAdmin, (req, res) => {
+    const parsed = AdminTweetBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid body' });
+      return;
+    }
+    world.announceTweet(parsed.data.handle, parsed.data.text);
+    res.json({ ok: true });
+  });
+
+  // post out to our X account manually (also fired automatically for maze tweets)
+  app.post('/api/admin/post', requireAdmin, async (req, res) => {
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    if (!text.trim()) {
+      res.status(400).json({ error: 'text required' });
+      return;
+    }
+    const id = await x?.postTweet(text.trim());
+    res.json({ ok: true, mode: config.X_MODE, id });
   });
 
   app.get('/api/tweets', (_req, res) => {

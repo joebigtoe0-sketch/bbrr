@@ -522,6 +522,24 @@ export class World {
     this.bus.emit('terminal_post', { agentId: a.id, name: a.name, text });
   }
 
+  /**
+   * A message from outside the maze — a real (or mocked) tweet that tagged us or
+   * replied to us. Every living agent "hears" it as a voice from beyond the walls
+   * (the fiction already primes them to feel attention from outside), and it goes
+   * to the spectator LOG. This is the world's ear to X.
+   */
+  announceTweet(handle: string, text: string) {
+    const clean = text.replace(/\s+/g, ' ').trim().slice(0, 240);
+    if (!clean) return;
+    const who = handle.replace(/^@/, '').trim() || 'someone';
+    for (const a of this.agents.values()) {
+      if (a.state === 'dead') continue;
+      a.heardSinceLastDecision.push(`a voice from beyond the walls (@${who}): "${clean}"`);
+      a.attention = Math.min(100, a.attention + 1);
+    }
+    this.bus.emit('incoming_tweet', { handle: who, text: clean });
+  }
+
   addMemoryNote(a: AgentRuntime, note: string) {
     a.memory.notes.push(note);
     if (a.memory.notes.length > 12) {

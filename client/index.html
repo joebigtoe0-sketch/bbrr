@@ -104,7 +104,7 @@
     }
 
     /* ---------- toasts ---------- */
-    #toasts { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+    #toasts { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
     .toast {
       background: var(--panel); border: 1px solid var(--dim); color: var(--amber);
       padding: 8px 18px; margin-bottom: 6px; font-size: 11px; letter-spacing: 1px;
@@ -113,6 +113,40 @@
     @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; } }
 
     #hint { position: absolute; bottom: 10px; right: 14px; font-size: 10px; color: #4a4428; z-index: 5; }
+
+    /* ---------- auto-director (top middle) ---------- */
+    #director {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 12; display: flex; align-items: center; gap: 8px;
+      background: var(--panel); border: 1px solid #3a3420; color: #8a7d3a;
+      padding: 7px 14px; font-family: inherit; font-size: 11px; letter-spacing: 2px;
+      cursor: pointer; border-radius: 2px; white-space: nowrap;
+    }
+    #director:hover { color: var(--yellow); }
+    #director .dot { width: 8px; height: 8px; border-radius: 50%; background: #4a4428; }
+    #director.active { border-color: var(--green); color: var(--green); box-shadow: 0 0 14px rgba(125,255,154,0.12); }
+    #director.active .dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: dirPulse 1.4s infinite; }
+    @keyframes dirPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    /* ---------- contract address (bottom middle) ---------- */
+    #ca-box {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 11; display: flex; align-items: center; gap: 10px;
+      background: var(--panel); border: 1px solid #3a3420; padding: 7px 10px 7px 14px;
+      font-family: inherit; font-size: 11px; border-radius: 2px; max-width: 92vw;
+    }
+    #ca-box .ca-label { color: #6b6340; letter-spacing: 2px; font-size: 10px; }
+    #ca-box .ca-val {
+      color: var(--yellow); letter-spacing: 0.5px; user-select: all;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 44vw;
+    }
+    #ca-copy {
+      background: #1a180e; border: 1px solid var(--dim); color: var(--yellow);
+      font-family: inherit; font-size: 10px; letter-spacing: 1px; padding: 5px 10px;
+      cursor: pointer; border-radius: 2px;
+    }
+    #ca-copy:hover { background: #262214; }
+    #ca-copy.copied { border-color: var(--green); color: var(--green); }
 
     /* ---------- become-the-chaos ---------- */
     #chaos-btn {
@@ -267,6 +301,14 @@
       <button data-act="terminal">FORGE LOG</button>
       <button data-act="lock">LOCK DOOR</button>
     </div>
+  </div>
+
+  <button id="director"><span class="dot"></span>AUTO-DIRECTOR</button>
+
+  <div id="ca-box">
+    <span class="ca-label">CA</span>
+    <span class="ca-val" id="ca-val">—</span>
+    <button id="ca-copy">COPY</button>
   </div>
 
   <div id="toasts"></div>

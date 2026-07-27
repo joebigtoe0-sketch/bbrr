@@ -87,6 +87,7 @@ export const WorldEventTypeSchema = z.enum([
   'hunt_started',
   'terminal_post',
   'maze_tweet',
+  'incoming_tweet',
 ]);
 export type WorldEventType = z.infer<typeof WorldEventTypeSchema>;
 

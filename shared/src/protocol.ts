@@ -154,6 +154,12 @@ export const AdminEventBody = z.object({
 });
 export type AdminEventBody = z.infer<typeof AdminEventBody>;
 
+export const AdminTweetBody = z.object({
+  handle: z.string().min(1).max(40).default('tester'),
+  text: z.string().min(1).max(280),
+});
+export type AdminTweetBody = z.infer<typeof AdminTweetBody>;
+
 export const AdminDebugBody = z.object({
   action: z.enum(['teleport_monster', 'force_stress', 'force_deceiving']),
   x: z.number().optional(),

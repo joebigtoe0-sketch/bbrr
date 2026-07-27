@@ -55,8 +55,8 @@ const DANCES = ['Bass_Beats', 'Boom_Dance'];
 const FACE_ROT: Record<string, number> = {
   s: 0,
   n: Math.PI,
-  e: -Math.PI / 2,
-  w: Math.PI / 2,
+  e: Math.PI / 2,
+  w: -Math.PI / 2,
 };
 
 const VIEW_SIZE = 14; // world units visible vertically at zoom 1
@@ -74,7 +74,7 @@ export class ThreeWorld {
   private chunkMeshes = new Map<string, ChunkMesh>();
   private agents = new Map<string, AgentObj>();
   private evidence = new Map<string, THREE.Object3D>();
-  private monster!: THREE.Mesh;
+  private monster = new THREE.Group();
   private chaos!: THREE.Mesh;
 
   private floorTex!: THREE.Texture;
@@ -85,6 +85,12 @@ export class ThreeWorld {
   private npcTemplate?: THREE.Object3D;
   private npcClips: THREE.AnimationClip[] = [];
   private lastFrameT = 0;
+  private monsterModel?: THREE.Object3D;
+  private monsterLegs: THREE.Object3D[] = [];
+  private monsterLegRest: number[] = [];
+  private monsterGX = 0;
+  private monsterGY = 0;
+  private monsterPhase = 0;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -110,7 +116,6 @@ export class ThreeWorld {
     this.scene.add(this.cam);
 
     this.buildMaterials();
-    this.monster = this.makeBillboard(this.monsterTexture(), 1.5, 2.3, { castShadow: true });
     this.monster.visible = false;
     this.scene.add(this.monster);
     this.chaos = this.makeBillboard(this.chaosTexture(), 1.0, 1.6, { emissive: 0x6a1a6a });
@@ -120,6 +125,7 @@ export class ThreeWorld {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.loadNpcModel();
+    this.loadMonsterModel();
     this.wireStore();
     this.wireInput();
     this.conn.onOpen = () => {};
@@ -399,7 +405,7 @@ export class ThreeWorld {
       const root = new THREE.Group();
       root.position.set(a.x, 0, a.y);
       this.scene.add(root);
-      const spot = new THREE.SpotLight(0xffe4ad, 130, 9, Math.PI / 2.7, 0.7, 1.15);
+      const spot = new THREE.SpotLight(0xffe4ad, 130, 9, Math.PI / 3.6, 0.6, 1.15);
       spot.castShadow = false;
       spot.shadow.mapSize.set(1024, 1024);
       spot.shadow.camera.near = 0.1;
@@ -456,6 +462,44 @@ export class ThreeWorld {
     });
   }
 
+  private loadMonsterModel() {
+    new GLTFLoader().load('/sprites/generated/monster.glb', (gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const s = 2.5 / (size.y || 2);
+      model.scale.setScalar(s);
+      model.position.y = -box.min.y * s;
+      model.traverse((n) => {
+        const m = n as THREE.Mesh;
+        if (m.isMesh) {
+          m.castShadow = true;
+          const mat = (m.material as THREE.MeshStandardMaterial).clone();
+          mat.color.multiplyScalar(0.35); // a dark thing that only shows when lit
+          mat.emissive = new THREE.Color(0x000000);
+          mat.roughness = 1;
+          m.material = mat;
+        }
+      });
+      // heuristic 'legs': the lowest few bones get a stepping wobble
+      model.updateMatrixWorld(true);
+      const bones: { b: THREE.Object3D; y: number }[] = [];
+      const v = new THREE.Vector3();
+      model.traverse((n) => {
+        if ((n as THREE.Bone).isBone) {
+          n.getWorldPosition(v);
+          bones.push({ b: n, y: v.y });
+        }
+      });
+      bones.sort((a, b) => a.y - b.y);
+      this.monsterLegs = bones.slice(0, 6).map((x) => x.b);
+      this.monsterLegRest = this.monsterLegs.map((b) => b.rotation.x);
+      this.monster.add(model);
+      this.monsterModel = model;
+    });
+  }
+
   private buildAgentModel(o: AgentObj, hue: number) {
     if (!this.npcTemplate) return;
     const model = skeletonClone(this.npcTemplate);
@@ -471,10 +515,18 @@ export class ThreeWorld {
     });
     const hand = model.getObjectByName('RightHand') ?? undefined;
     if (hand) {
+      // a small handheld torch. bone scale is unknown, so compensate with the
+      // hand's world scale to render it at a real-world size (~0.3 long) — the
+      // old 2.2-long cylinder was poking clean through walls.
+      hand.updateWorldMatrix(true, false);
+      const ws = new THREE.Vector3();
+      hand.getWorldScale(ws);
+      const inv = 1 / (ws.x || 1);
       const fl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.5, 0.5, 2.2, 8),
+        new THREE.CylinderGeometry(0.045, 0.05, 0.3, 8),
         new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x554400, emissiveIntensity: 0.4 }),
       );
+      fl.scale.setScalar(inv);
       fl.rotation.z = Math.PI / 2;
       hand.add(fl);
       o.hand = hand;
@@ -501,9 +553,7 @@ export class ThreeWorld {
   }
 
   private updateMonster() {
-    const m = this.store.monster;
     this.monster.visible = true;
-    this.monster.position.set(m.x, 0, m.y);
   }
   private updateChaos() {
     const c = this.store.chaos;
@@ -698,16 +748,43 @@ export class ThreeWorld {
       o.mixer?.update(dt);
       const bf = o.battery <= 0 ? 0.28 : 0.4 + 0.6 * (o.battery / 100);
       const fd = FACE[o.facing] ?? [0, 1];
-      const hp = new THREE.Vector3(o.gx, 1.1, o.gy);
-      if (o.hand) {
-        o.hand.getWorldPosition(hp);
-        hp.y = Math.max(0.85, Math.min(1.45, hp.y));
-      }
-      o.spot.position.copy(hp);
+      // anchor the beam to the BODY CENTRE (always >=0.5 tiles from any wall),
+      // nudged a little forward — never the hand's swinging world position, which
+      // could cross to the far side of a thin wall when the agent hugs it.
+      o.spot.position.set(o.gx + fd[0] * 0.18, 1.15, o.gy + fd[1] * 0.18);
       o.spot.intensity = 135 * bf;
       o.spot.distance = 9 * bf;
-      o.target.position.set(o.gx + fd[0] * 1.6, 0.1, o.gy + fd[1] * 1.6);
+      o.target.position.set(o.gx + fd[0] * 1.6, 0.12, o.gy + fd[1] * 1.6);
     }
+    // ---- monster: smooth move + procedural creature animation ----
+    {
+      const m = this.store.monster;
+      const dx = m.x - this.monsterGX;
+      const dy = m.y - this.monsterGY;
+      const step = Math.hypot(dx, dy);
+      this.monsterGX += dx * Math.min(1, dt * 6);
+      this.monsterGY += dy * Math.min(1, dt * 6);
+      this.monster.position.set(this.monsterGX, 0, this.monsterGY);
+      const moving = step > 0.02;
+      if (step > 0.001) {
+        const want = Math.atan2(dx, dy);
+        let dr = want - this.monster.rotation.y;
+        while (dr > Math.PI) dr -= Math.PI * 2;
+        while (dr < -Math.PI) dr += Math.PI * 2;
+        this.monster.rotation.y += dr * Math.min(1, dt * 6);
+      }
+      this.monsterPhase += dt * (moving ? 8 : 2.5);
+      if (this.monsterModel) {
+        this.monsterModel.position.y = Math.abs(Math.sin(this.monsterPhase)) * (moving ? 0.14 : 0.05);
+        this.monsterModel.rotation.z = Math.sin(this.monsterPhase * 0.5) * 0.05;
+        const amp = moving ? 0.35 : 0.08;
+        for (let i = 0; i < this.monsterLegs.length; i++) {
+          this.monsterLegs[i]!.rotation.x =
+            this.monsterLegRest[i]! + Math.sin(this.monsterPhase + i * Math.PI) * amp;
+        }
+      }
+    }
+
     // camera is always locked to an agent; default to the first if none chosen
     if (!this.followId || !this.agents.has(this.followId)) {
       const first = [...this.agents.keys()][0];
