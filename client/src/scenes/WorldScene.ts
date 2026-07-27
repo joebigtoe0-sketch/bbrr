@@ -151,7 +151,10 @@ export class WorldScene extends Phaser.Scene {
   /** per-chunk powered-light intensity, tweened on power events */
   private power = new Map<string, { v: number }>();
   /** shadow-cast room-light polygons per powered chunk (fixtures don't move) */
-  private roomLightCache = new Map<string, { x: number; y: number }[][]>();
+  private roomLightCache = new Map<
+    string,
+    { ox: number; oy: number; pts: { x: number; y: number }[] }[]
+  >();
   /** wall keys to keep translucent because evidence sits right behind them */
   private evidenceFadeKeys = new Set<string>();
   private evidenceFadeDirty = true;
@@ -677,7 +680,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** omni light from a ceiling fixture, clipped by the room's walls */
-  private castRoomLight(px: number, py: number, R: number): { x: number; y: number }[] {
+  private castRoomLight(
+    px: number,
+    py: number,
+    R: number,
+  ): { ox: number; oy: number; pts: { x: number; y: number }[] } {
     const segs = this.gatherSegs(px, py, R);
     const pts: { x: number; y: number }[] = [];
     const N = 64;
@@ -693,11 +700,15 @@ export class WorldScene extends Phaser.Scene {
       const op = entityToScreen(px + dx * t, py + dy * t);
       pts.push({ x: op.sx, y: op.sy });
     }
-    return pts;
+    const o = entityToScreen(px, py);
+    return { ox: o.sx, oy: o.sy, pts };
   }
 
   /** every fixture in the chunk lights its own room (cached per chunk) */
-  private roomLightsFor(key: string, c: MazeChunk): { x: number; y: number }[][] {
+  private roomLightsFor(
+    key: string,
+    c: MazeChunk,
+  ): { ox: number; oy: number; pts: { x: number; y: number }[] }[] {
     let polys = this.roomLightCache.get(key);
     if (polys) return polys;
     polys = [];
@@ -717,6 +728,39 @@ export class WorldScene extends Phaser.Scene {
     }
     this.roomLightCache.set(key, polys);
     return polys;
+  }
+
+  /**
+   * Erase a shadow-cast light polygon into the darkness with RADIAL FALLOFF:
+   * several concentric copies scaled toward the light's origin, each removing
+   * a little darkness, so the centre is bright and the edges (and any thin
+   * spill through a doorway) fade to nothing instead of a hard full-bright
+   * spike. offX/offY position it in the darkRT; peak scales overall brightness.
+   */
+  private eraseLightRings(
+    pts: { x: number; y: number }[],
+    originSX: number,
+    originSY: number,
+    offX: number,
+    offY: number,
+    peak: number,
+  ) {
+    const rings: [number, number][] = [
+      [1.0, 0.16],
+      [0.72, 0.18],
+      [0.48, 0.22],
+      [0.26, 0.28],
+    ];
+    for (const [k, a] of rings) {
+      this.lightGfx.clear();
+      this.lightGfx.fillStyle(0xffffff, Math.min(0.9, a * peak));
+      const scaled =
+        k === 1
+          ? pts
+          : pts.map((p) => ({ x: originSX + (p.x - originSX) * k, y: originSY + (p.y - originSY) * k }));
+      this.lightGfx.fillPoints(scaled, true);
+      this.darkRT.erase(this.lightGfx, offX, offY);
+    }
   }
 
   private computeLight(v: AgentView) {
@@ -1244,11 +1288,8 @@ export class WorldScene extends Phaser.Scene {
         const c = this.store.chunks.get(key);
         if (!c) continue;
         for (const poly of this.roomLightsFor(key, c)) {
-          if (poly.length < 3) continue;
-          this.lightGfx.clear();
-          this.lightGfx.fillStyle(0xffffff, 0.58 * rec.v);
-          this.lightGfx.fillPoints(poly, true);
-          this.darkRT.erase(this.lightGfx, -vx * z, -vy * z);
+          if (poly.pts.length < 3) continue;
+          this.eraseLightRings(poly.pts, poly.ox, poly.oy, -vx * z, -vy * z, 1.15 * rec.v);
         }
       }
       // flashlights: shadow-cast light polygons — light cannot pass walls
@@ -1262,10 +1303,8 @@ export class WorldScene extends Phaser.Scene {
           const c = entityToScreen(v.gx, v.gy);
           const ox = (c.sx - o.sx - vx) * z;
           const oy = (c.sy - o.sy - vy) * z;
-          this.lightGfx.clear();
-          this.lightGfx.fillStyle(0xffffff, v.battery <= 0 ? 0.3 : 0.45 + 0.17 * (v.battery / 100));
-          this.lightGfx.fillPoints(v.lightOuter, true);
-          this.darkRT.erase(this.lightGfx, ox, oy);
+          const peak = v.battery <= 0 ? 0.7 : 1.0 + 0.35 * (v.battery / 100);
+          this.eraseLightRings(v.lightOuter, o.sx, o.sy, ox, oy, peak);
         }
         // tight personal glow (small enough not to spill past a wall)
         const ps = toRT(v.sprite.x, v.sprite.y - 14);
