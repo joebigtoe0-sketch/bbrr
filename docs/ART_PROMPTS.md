@@ -1,8 +1,8 @@
-# Sprite Asset Prompts — THE BACKROOMS: Found Footage Survival
+# Sprite Asset Prompts — THE NIGHTROOMS: Found Footage Survival
 
 Image-generation prompts for every asset, tuned to how the engine actually consumes
 them. Style target = the key-art reference: **2D retro found-footage horror, isometric,
-chunky pixel art, sickly fluorescent-yellow backrooms, VHS grain, a lone survivor with a
+chunky pixel art, sickly fluorescent-yellow nightrooms, VHS grain, a lone survivor with a
 flashlight, a dark glowing-eyed entity.**
 
 ---
@@ -62,7 +62,7 @@ So: **front-facing** = we see their face, they head toward the viewer-right.
 ```
 Retro pixel-art game sprite, 2D found-footage horror, isometric 2:1 dimetric ¾ view.
 Chunky low-resolution pixels, crisp hard edges, NO anti-aliasing, NO blur, limited palette.
-Sickly institutional "backrooms" mood but the sprite itself is neutral/flat-lit (the game
+Sickly institutional "nightrooms" mood but the sprite itself is neutral/flat-lit (the game
 lights it later). Transparent background (or flat #FF00FF), single subject centered, full
 body, feet at the bottom edge, no ground shadow, no scenery, no text, no scanlines, no UI.
 Palette anchors: dirty fluorescent yellows #b8a44a #ad9a42, olive walls #9c8f45 #877b39,
@@ -86,7 +86,7 @@ Generate the base survivor, then re-prompt swapping the outfit line for each ros
 **Base — front walk:**
 ```
 [STYLE BLOCK]
-A lone survivor character for an isometric backrooms horror game, ¾ front view facing the
+A lone survivor character for an isometric nightrooms horror game, ¾ front view facing the
 camera and angled toward the lower-right. Ordinary young adult, short practical hair,
 navy-blue short-sleeve shirt #3b5b8c, brown work trousers #6b4a2f, worn sneakers, holding a
 small handheld flashlight forward in one hand (beam NOT drawn — the game renders the light).
@@ -127,7 +127,7 @@ Bigger cell: **64×96 px**, feet at bottom center.
 **Walk front (toward camera):**
 ```
 [STYLE BLOCK]
-A tall humanoid horror entity for an isometric backrooms game, ¾ front view facing the
+A tall humanoid horror entity for an isometric nightrooms game, ¾ front view facing the
 camera, angled lower-right. Near-black desaturated navy silhouette #0a0a14, elongated thin
 limbs, slightly hunched predatory posture, long arms, no clear face except TWO pale glowing
 eyes #cfe8ff (cold white-blue). Faint cold rim light along one edge; body reads as a shadow,
@@ -145,7 +145,7 @@ while roaming/dormant.
 A corrupted, glitching figure that materializes to sabotage. Cell **48×64 px**.
 ```
 [STYLE BLOCK]
-A glitching trickster entity for an isometric backrooms game, ¾ front view, angled
+A glitching trickster entity for an isometric nightrooms game, ¾ front view, angled
 lower-right. Roughly humanoid like a survivor but CORRUPTED: datamosh/VHS-tracking-error
 coloring, magenta #d026c9 and cyan #2be2d8 chromatic-aberration split, scanline tearing
 across the body, flickering edges, a couple of shifted pixel-block artifacts. Blank dark
@@ -165,7 +165,7 @@ Author at the target size, base/feet touching the bottom edge, transparent.
 |---|---|---|---|
 | Security monitor | `crt` | 40×48 | `A grubby CRT security monitor on a small metal stand, ¾ iso view. Beige-grey plastic, convex glass with faint phosphor-green #35e06a text glow, power LED. Floor-standing. 2ND FRAME: same but screen flickers to static.` |
 | Dot-matrix printer | `printer` | 40×36 | `An old beige dot-matrix office printer, ¾ iso view, feed tractor on top, a sheet half-printed sticking up. Dusty. 2ND FRAME: paper advanced further out (printing animation).` |
-| Canned-supply cache | `crate` | 44×40 | `A small stash of canned food and supplies for a backrooms survival game — a stack of dented tin cans with faded labels plus a cardboard box, ¾ iso view. Matches the "scattered cans" survival vibe of the reference. Warm grimy tones.` |
+| Canned-supply cache | `crate` | 44×40 | `A small stash of canned food and supplies for a nightrooms survival game — a stack of dented tin cans with faded labels plus a cardboard box, ¾ iso view. Matches the "scattered cans" survival vibe of the reference. Warm grimy tones.` |
 | Wooden crate (airdrop) | `crate_wood` | 44×40 | `A weathered wooden supply crate, ¾ iso view, rope handle, stencilled marks worn off, a couple of cans beside it.` |
 | Exit sign | `sign` | 28×40 | `A small yellow institutional EXIT sign on a short metal pole/stand, ¾ iso view, black arrow, scuffed. Ominously out of place. Provide a CLEAN version and an ALTERED version (arrow crudely repainted the wrong way, tape over letters) for the chaos agent's fakes.` |
 | Printout page | `paper` | 18×22 | `A single sheet of dot-matrix printout lying curled on the floor, ¾ iso view, faint monospace text lines, one torn corner.` |
@@ -199,7 +199,7 @@ flat, tileable **wallpaper + baseboard strip** and I'll map it onto the existing
 wall geometry (keeps perfect alignment, gains real texture):
 ```
 [STYLE BLOCK]
-A seamless tileable wall texture strip for a backrooms game: aged institutional wallpaper,
+A seamless tileable wall texture strip for a nightrooms game: aged institutional wallpaper,
 uniform mustard-olive #9c8f45, faint vertical striping, water stains and scuffs, a darker
 baseboard band #574d26 along the bottom. Flat front-on view, evenly lit, seamless left-right.
 ```

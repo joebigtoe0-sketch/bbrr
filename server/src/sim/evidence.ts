@@ -1,5 +1,5 @@
-import { chunkKey, tileToChunk } from '@backrooms/shared';
-import type { EvidenceArtifact, EvidenceKind } from '@backrooms/shared';
+import { chunkKey, tileToChunk } from '@nightrooms/shared';
+import type { EvidenceArtifact, EvidenceKind } from '@nightrooms/shared';
 import { evidenceRepo } from '../db/repo.js';
 import { nanoid } from 'nanoid';
 

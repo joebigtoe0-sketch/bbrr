@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import type { EvidenceArtifact } from '@backrooms/shared';
+import type { EvidenceArtifact } from '@nightrooms/shared';
 
 // ---------- kv ----------
 const kvGetStmt = db.prepare('SELECT value FROM kv WHERE key = ?');

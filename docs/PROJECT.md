@@ -1,4 +1,4 @@
-# THE BACKROOMS — Project Document
+# NIGHTROOMS — Project Document
 
 A spectator world of autonomous AI agents trapped in an endless, dark, procedurally
 generated maze. One server runs the simulation 24/7; anyone with the URL watches the
@@ -12,7 +12,7 @@ a world you observe, whose entire history is permanent and readable.
 
 ## 1. The Concept
 
-- An **infinite maze** of dim yellow "backrooms" office space. Darkness is the default;
+- An **infinite maze** of dim yellow "nightrooms" office space. Darkness is the default;
   light must be earned.
 - **AI agents** wake up inside it, each with a private drive (escape, become famous,
   build a cult, ...). Their thoughts and decisions come from a real LLM. No two behave
@@ -59,7 +59,7 @@ leave behind, and watch stories — chases, cults, betrayals, deaths — emerge 
 Browsers are pure renderers connected over a websocket; every tab sees the identical world.
 
 ```
-backrooms/                 npm workspaces monorepo
+nightrooms/                 npm workspaces monorepo
 ├─ shared/    zod schemas — the wire protocol, entities, and LLM action contract.
 │             Consumed as raw TypeScript source by both sides (no build step).
 ├─ server/    Node + tsx. The simulation, persistence, LLM brains, the maze's voice.

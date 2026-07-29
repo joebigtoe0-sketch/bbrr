@@ -1,5 +1,5 @@
 {
-  "name": "@backrooms/client",
+  "name": "@nightrooms/client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@backrooms/shared": "*",
+    "@nightrooms/shared": "*",
     "phaser": "^3.85.2",
     "three": "^0.169.0",
     "zod": "^3.23.8"

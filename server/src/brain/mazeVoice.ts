@@ -173,7 +173,10 @@ export class MazeVoice {
             {
               role: 'system',
               content:
-                'You are the voice of an endless backrooms maze that holds living residents. Write ONE short post (under 240 chars). ' +
+                'You are the voice of an endless nightrooms maze that holds living residents. Write ONE post. ' +
+                'LENGTH: usually short and punchy (a line or two). But roughly one time in four, let it RUN LONGER — ' +
+                'a full maintenance advisory, a rambling management memo, a cold multi-sentence obituary, a page of procedure. ' +
+                'Vary it; never the same length twice in a row. ' +
                 'CRUCIAL: rotate your register every time — do NOT default to "incident report" or "intercepted transmission". ' +
                 'Draw from: management memos, PA announcements, lost-and-found notices, fake maintenance advisories, weather reports for a place with no sky, ' +
                 'cryptic one-liners, overheard fragments, bland lies stated as fact, cold obituaries, mock-cheerful reassurances. ' +
@@ -182,11 +185,11 @@ export class MazeVoice {
             },
             { role: 'user', content: context ? `${brief}\n(also unremarked recently: ${context})` : brief },
           ],
-          max_tokens: 120,
+          max_tokens: 800,
           temperature: 1.05,
         });
         const out = res.choices[0]?.message?.content?.trim();
-        if (out) text = out.slice(0, 270);
+        if (out) text = out;
       } catch (err) {
         console.warn(`[voice] tweet generation failed: ${(err as Error).message}`);
       }

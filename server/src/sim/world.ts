@@ -7,14 +7,14 @@ import {
   TILE,
   chunkKey,
   tileToChunk,
-} from '@backrooms/shared';
+} from '@nightrooms/shared';
 import type {
   Agent,
   DeltaMsg,
   EvidenceArtifact,
   Objective,
   ThoughtEvent,
-} from '@backrooms/shared';
+} from '@nightrooms/shared';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { db } from '../db/db.js';

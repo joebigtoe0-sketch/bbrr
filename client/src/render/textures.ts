@@ -210,7 +210,7 @@ export function generateWallTexturesFromWallpaper(scene: Phaser.Scene) {
 
 /**
  * All placeholder art is generated here with Graphics — no external assets.
- * Backrooms palette: dirty yellows, damp carpet, fluorescent white-green.
+ * Nightrooms palette: dirty yellows, damp carpet, fluorescent white-green.
  */
 export function generateTextures(scene: Phaser.Scene) {
   const g = scene.add.graphics();

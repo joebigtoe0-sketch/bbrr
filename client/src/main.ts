@@ -12,7 +12,7 @@ import {
   renderAgentList,
   toast,
 } from './ui/dom.js';
-import type { Agent, WorldEvent } from '@backrooms/shared';
+import type { Agent, WorldEvent } from '@nightrooms/shared';
 
 const app = document.getElementById('app')!;
 
@@ -34,7 +34,7 @@ try {
   world = new ThreeWorld(app);
 } catch (err) {
   showFatal(
-    'THE BACKROOMS needs a browser with <b>WebGL2</b>.<br><br>' +
+    'NIGHTROOMS needs a browser with <b>WebGL2</b>.<br><br>' +
       'Please update to Safari 15+ (or newer macOS/iOS), or open this in Chrome or Firefox.',
   );
   throw err;
@@ -265,17 +265,24 @@ setInterval(() => {
   const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
   const bg = document.getElementById('vol-bg') as HTMLInputElement;
   const sfx = document.getElementById('vol-sfx') as HTMLInputElement;
-  const savedBg = Number(lsGet('backrooms-vol-bg', '50'));
-  const savedSfx = Number(lsGet('backrooms-vol-sfx', '70'));
+  const savedBg = Number(lsGet('nightrooms-vol-bg', '50'));
+  const savedSfx = Number(lsGet('nightrooms-vol-sfx', '70'));
   bg.value = String(savedBg);
   sfx.value = String(savedSfx);
   world.setBgVol(savedBg / 100);
   world.setSfxVol(savedSfx / 100);
-  bg.oninput = () => { world.setBgVol(Number(bg.value) / 100); lsSet('backrooms-vol-bg', bg.value); };
-  sfx.oninput = () => { world.setSfxVol(Number(sfx.value) / 100); lsSet('backrooms-vol-sfx', sfx.value); };
+  bg.oninput = () => { world.setBgVol(Number(bg.value) / 100); lsSet('nightrooms-vol-bg', bg.value); };
+  sfx.oninput = () => { world.setSfxVol(Number(sfx.value) / 100); lsSet('nightrooms-vol-sfx', sfx.value); };
 }
 
-// ---------------- contract address ----------------
+// ---------------- social + contract address ----------------
+// the account the X badge (bottom-left) links to. change to your real handle.
+const X_URL = 'https://x.com/nightrooms';
+{
+  const x = document.getElementById('x-link') as HTMLAnchorElement | null;
+  if (x) x.href = X_URL;
+}
+
 // set once the token launches. left as a placeholder until then.
 const CONTRACT_ADDRESS = '';
 {

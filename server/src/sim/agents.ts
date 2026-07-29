@@ -4,8 +4,8 @@ import {
   chunkKey,
   tileToChunk,
   actionLabel,
-} from '@backrooms/shared';
-import type { Agent, AgentAction, BrainDecision, MindState, Objective } from '@backrooms/shared';
+} from '@nightrooms/shared';
+import type { Agent, AgentAction, BrainDecision, MindState, Objective } from '@nightrooms/shared';
 import { findPath } from './pathfinding.js';
 import type { World } from './world.js';
 

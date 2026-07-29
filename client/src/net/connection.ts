@@ -1,5 +1,5 @@
-import { ServerMsg } from '@backrooms/shared';
-import type { ClientMsg } from '@backrooms/shared';
+import { ServerMsg } from '@nightrooms/shared';
+import type { ClientMsg } from '@nightrooms/shared';
 import type { WorldStore } from '../state/worldStore.js';
 
 /** Reconnecting websocket that feeds the store. */

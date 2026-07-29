@@ -1,5 +1,5 @@
-import { CHUNK_SIZE, EDGE, TILE, WALKABLE_TILES, chunkKey, edgePassable, tileToChunk } from '@backrooms/shared';
-import type { MazeChunk } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, WALKABLE_TILES, chunkKey, edgePassable, tileToChunk } from '@nightrooms/shared';
+import type { MazeChunk } from '@nightrooms/shared';
 import { chunkRepo } from '../db/repo.js';
 import { rngFor, randInt } from './rng.js';
 
@@ -30,7 +30,7 @@ export interface EdgeChange {
 }
 
 /**
- * Infinite chunked maze. Walls live on tile EDGES (backrooms-style thin
+ * Infinite chunked maze. Walls live on tile EDGES (nightrooms-style thin
  * partitions): each tile owns its north (wallsH) and west (wallsV) edge.
  * Chunks generate lazily and deterministically; the border wall line between
  * two chunks is owned by the south/east chunk and both sides agree on its
@@ -223,7 +223,7 @@ export class Maze {
   }
 
   /**
-   * Deterministic generation — Found-Footage backrooms:
+   * Deterministic generation — Found-Footage nightrooms:
    * every tile is floor; walls are edge lines. Chunk borders get partial
    * wall lines with doorways (owned by this chunk's row 0 / col 0, agreed
    * via hash(seed, edgeId)); the interior is BSP-subdivided into small

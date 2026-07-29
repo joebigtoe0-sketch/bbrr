@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { CHUNK_SIZE, EDGE, TILE, chunkKey, tileToChunk } from '@backrooms/shared';
-import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, chunkKey, tileToChunk } from '@nightrooms/shared';
+import type { Agent, EvidenceArtifact, MazeChunk, ThoughtEvent, WorldEvent } from '@nightrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
 import {

@@ -1,5 +1,5 @@
-import { OBJECTIVE_LABELS, OBJECTIVES } from '@backrooms/shared';
-import type { Agent, Objective } from '@backrooms/shared';
+import { OBJECTIVE_LABELS, OBJECTIVES } from '@nightrooms/shared';
+import type { Agent, Objective } from '@nightrooms/shared';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -120,7 +120,7 @@ export function openReader(
   if (typeTimer) clearInterval(typeTimer);
   // terminal reads get a little boot chrome, like a shell printing its buffer
   const full = opts.terminal
-    ? ['BACKROOMS-OS 0.9.4  ::  secure shell', 'reading /var/log/terminal.buffer …', '', ...lines].join('\n')
+    ? ['NIGHTROOMS-OS 0.9.4  ::  secure shell', 'reading /var/log/terminal.buffer …', '', ...lines].join('\n')
     : lines.join('\n');
   if (!typeOn) {
     linesEl.textContent = full;
@@ -231,7 +231,7 @@ export async function refreshTweets() {
     $('right-content').innerHTML = (data.tweets ?? [])
       .map(
         (tw: { text: string; kind: string; created_at: number }) =>
-          `<div class="tweet-card">${esc(tw.text)}<div class="meta">@the_backrooms · ${tw.kind} · ${new Date(tw.created_at).toLocaleTimeString([], { hour12: false })}</div></div>`,
+          `<div class="tweet-card">${esc(tw.text)}<div class="meta">@the_nightrooms · ${tw.kind} · ${new Date(tw.created_at).toLocaleTimeString([], { hour12: false })}</div></div>`,
       )
       .join('') || '<div class="log-line">the maze has said nothing yet.</div>';
   } catch {

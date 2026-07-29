@@ -1,4 +1,4 @@
-import { chunkKey } from '@backrooms/shared';
+import { chunkKey } from '@nightrooms/shared';
 import type {
   Agent,
   EvidenceArtifact,
@@ -7,7 +7,7 @@ import type {
   ServerMsg,
   ThoughtEvent,
   WorldEvent,
-} from '@backrooms/shared';
+} from '@nightrooms/shared';
 
 export interface ChaosView {
   x: number;

@@ -30,10 +30,9 @@ const EnvSchema = z.object({
   // MASTER SWITCH: 'mock' = no network at all (mentions come only from the admin
   // panel, posts just log). 'live' = the reader/poster below turn on per their keys.
   X_MODE: z.enum(['mock', 'live']).default('mock'),
-  X_HANDLE: z.string().default('backrooms'), // our account handle, no '@'
+  X_HANDLE: z.string().default('nightrooms'), // our account handle, no '@'
   // -- reader (incoming mentions) --
   X_BEARER_TOKEN: z.string().default(''), // official API app bearer (reads mentions)
-  TWITTERAPI_IO_KEY: z.string().default(''), // optional cheaper 3rd-party read proxy
   X_USER_ID: z.string().default(''), // optional; else looked up from the handle + cached
   X_READ_POLL_MIN: z.coerce.number().default(2), // minutes between mention polls
   // -- poster (outgoing tweets, official API + OAuth 1.0a) --
@@ -42,7 +41,7 @@ const EnvSchema = z.object({
   X_CONSUMER_SECRET: z.string().default(''),
   X_ACCESS_TOKEN: z.string().default(''),
   X_ACCESS_SECRET: z.string().default(''),
-  X_MAX_POST_LEN: z.coerce.number().default(272), // 280 minus a margin; raise with Premium
+  X_MAX_POST_LEN: z.coerce.number().default(4000), // Premium long-form; free tier is 280
 });
 
 export const config = EnvSchema.parse(process.env);

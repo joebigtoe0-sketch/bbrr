@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'node:http';
-import { ClientMsg, PROTOCOL_VERSION, chunkKey } from '@backrooms/shared';
-import type { MazeChunk, EvidenceArtifact, ServerMsg } from '@backrooms/shared';
+import { ClientMsg, PROTOCOL_VERSION, chunkKey } from '@nightrooms/shared';
+import type { MazeChunk, EvidenceArtifact, ServerMsg } from '@nightrooms/shared';
 import type { World } from '../sim/world.js';
 import { toWireMonster } from '../sim/monster.js';
 import { chunkRepo, evidenceRepo } from '../db/repo.js';

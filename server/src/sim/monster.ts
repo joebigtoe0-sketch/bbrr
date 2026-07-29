@@ -1,5 +1,5 @@
-import { MONSTER_HUNT_SPEED, MONSTER_ROAM_SPEED } from '@backrooms/shared';
-import type { MonsterState } from '@backrooms/shared';
+import { MONSTER_HUNT_SPEED, MONSTER_ROAM_SPEED } from '@nightrooms/shared';
+import type { MonsterState } from '@nightrooms/shared';
 import { findPath, hasLineOfSight } from './pathfinding.js';
 import type { World } from './world.js';
 import type { AgentRuntime } from './agents.js';

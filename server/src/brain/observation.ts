@@ -1,4 +1,4 @@
-import { chunkKey, tileToChunk } from '@backrooms/shared';
+import { chunkKey, tileToChunk } from '@nightrooms/shared';
 import { hasLineOfSight } from '../sim/pathfinding.js';
 import type { World } from '../sim/world.js';
 import type { AgentRuntime } from '../sim/agents.js';

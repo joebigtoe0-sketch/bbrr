@@ -8,10 +8,9 @@ import type { World } from '../sim/world.js';
  * setup. Two independent halves, each lighting up only when X_MODE=live AND its
  * keys exist:
  *
- *   READER — polls @X_HANDLE mentions (twitterapi.io if its key is set — cheap
- *     read-only proxy; otherwise the official API with a Bearer token) and feeds
- *     each mention into the maze as a voice from beyond the walls. Mentions drip
- *     in spaced across the poll window rather than all at once.
+ *   READER — polls @X_HANDLE mentions via the official API with a Bearer token
+ *     and feeds each mention into the maze as a voice from beyond the walls.
+ *     Mentions drip in spaced across the poll window rather than all at once.
  *
  *   POSTER — posts the maze's own utterances to the account via the OFFICIAL X
  *     API v2 with OAuth 1.0a user context. Requires X_POST=on and the four OAuth
@@ -24,8 +23,6 @@ import type { World } from '../sim/world.js';
 
 const HANDLE = () => config.X_HANDLE.trim().replace(/^@/, '');
 const isLive = () => config.X_MODE === 'live';
-
-type Mention = { id?: string; text?: string; createdAt?: string; author?: { userName?: string } };
 
 export class XClient {
   private timers: ReturnType<typeof setTimeout>[] = [];
@@ -59,15 +56,13 @@ export class XClient {
         console.log(`[x] posting as @${HANDLE()} via the official API`);
       }
     }
-    // IN: poll mentions (twitterapi.io preferred, else official Bearer)
-    if (config.TWITTERAPI_IO_KEY || config.X_BEARER_TOKEN) {
-      const via = config.TWITTERAPI_IO_KEY ? 'twitterapi.io' : 'the official API';
-      console.log(`[x] reading mentions of @${HANDLE()} via ${via}`);
+    // IN: poll mentions via the official API
+    if (config.X_BEARER_TOKEN) {
+      console.log(`[x] reading mentions of @${HANDLE()} via the official API`);
       const tick = async () => {
         if (this.stopped) return;
         try {
-          if (config.TWITTERAPI_IO_KEY) await this.pollMentionsProxy(world);
-          else await this.pollMentionsOfficial(world);
+          await this.pollMentionsOfficial(world);
         } catch (e) {
           console.warn('[x] mentions:', String(e).slice(0, 140));
         }
@@ -157,40 +152,6 @@ export class XClient {
     }
     this.drip(world, batch);
     if (data.meta?.newest_id) kv.set('xSinceId', data.meta.newest_id);
-  }
-
-  /** cheap reader: twitterapi.io mentions endpoint */
-  private async pollMentionsProxy(world: World) {
-    const since = Number(kv.get('xSinceTime') ?? 0) || Math.floor(Date.now() / 1000) - 3600;
-    const res = await fetch(
-      `https://api.twitterapi.io/twitter/user/mentions?userName=${HANDLE()}&sinceTime=${since}`,
-      { headers: { 'X-API-Key': config.TWITTERAPI_IO_KEY } },
-    );
-    if (!res.ok) {
-      console.warn(`[x] mentions http ${res.status}: ${(await res.text()).slice(0, 120)}`);
-      return;
-    }
-    const data = (await res.json()) as { tweets?: Mention[]; data?: Mention[] };
-    const tweets = data.tweets ?? data.data ?? [];
-    if (!tweets.length) return;
-    const seen = new Set<string>(JSON.parse(kv.get('xSeenIds') ?? '[]') as string[]);
-    let newest = since;
-    tweets.sort((a, b) => Date.parse(a.createdAt ?? '') - Date.parse(b.createdAt ?? ''));
-    const batch: { text: string; author: string | null }[] = [];
-    for (const t of tweets) {
-      if (!t.id || seen.has(t.id)) continue;
-      seen.add(t.id);
-      const author = t.author?.userName ?? null;
-      if (author && author.toLowerCase() === HANDLE().toLowerCase()) continue;
-      const text = cleanTweet(t.text ?? '');
-      if (text.length < 2) continue;
-      batch.push({ text, author });
-      const ts = t.createdAt ? Math.floor(Date.parse(t.createdAt) / 1000) : newest;
-      if (ts > newest) newest = ts;
-    }
-    this.drip(world, batch);
-    kv.set('xSinceTime', String(newest));
-    kv.set('xSeenIds', JSON.stringify([...seen].slice(-300)));
   }
 
   /** a poll returning many mentions must not dump them at once — space them out */

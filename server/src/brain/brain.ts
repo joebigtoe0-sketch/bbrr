@@ -1,4 +1,4 @@
-import type { BrainDecision, Objective } from '@backrooms/shared';
+import type { BrainDecision, Objective } from '@nightrooms/shared';
 
 /** Everything an agent knows at decision time. Coordinate-free by design. */
 export interface Observation {

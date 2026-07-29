@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db/db.js';
-import { AdminDebugBody, AdminEventBody, AdminTweetBody, SpawnAgentBody } from '@backrooms/shared';
+import { AdminDebugBody, AdminEventBody, AdminTweetBody, SpawnAgentBody } from '@nightrooms/shared';
 import { config, isDev } from '../config.js';
 import { agentRepo, caseFileRepo, eventRepo, thoughtRepo, tweetRepo } from '../db/repo.js';
 import type { World } from '../sim/world.js';

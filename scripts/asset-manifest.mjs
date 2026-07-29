@@ -4,7 +4,7 @@
 //   node scripts/gen-assets.mjs crt printer
 // Sizes gpt-image-1 accepts: 1024x1024, 1024x1536 (portrait), 1536x1024 (landscape).
 
-export const STYLE_BLOCK = `Retro pixel-art game sprite, 2D found-footage horror, isometric 2:1 dimetric three-quarter view. Chunky low-resolution pixels, crisp hard edges, no anti-aliasing, no blur, limited palette. Sickly institutional "backrooms" mood but the sprite itself is neutral/flat-lit. Transparent background, single subject centered, full body, feet at the bottom edge, no ground shadow, no scenery, no text, no scanlines, no UI, no border. Palette: dirty fluorescent yellows #b8a44a #ad9a42, olive walls #9c8f45 #877b39, cold shadows, pale fluorescent white #f5ffe8. VHS-era 90s survival-horror vibe.`;
+export const STYLE_BLOCK = `Retro pixel-art game sprite, 2D found-footage horror, isometric 2:1 dimetric three-quarter view. Chunky low-resolution pixels, crisp hard edges, no anti-aliasing, no blur, limited palette. Sickly institutional "nightrooms" mood but the sprite itself is neutral/flat-lit. Transparent background, single subject centered, full body, feet at the bottom edge, no ground shadow, no scenery, no text, no scanlines, no UI, no border. Palette: dirty fluorescent yellows #b8a44a #ad9a42, olive walls #9c8f45 #877b39, cold shadows, pale fluorescent white #f5ffe8. VHS-era 90s survival-horror vibe.`;
 
 export const ASSETS = [
   // ---- props (single frame, transparent) ----
@@ -124,27 +124,27 @@ export const ASSETS = [
     file: 'survivor_idle_front.png',
     size: '1024x1536',
     prompt:
-      'A lone survivor character for an isometric backrooms horror game, three-quarter FRONT view facing the camera, angled toward the lower-right, standing idle. Ordinary young adult, short practical hair, navy-blue short-sleeve shirt (#3b5b8c), brown work trousers (#6b4a2f), worn sneakers, holding a small handheld flashlight (beam not drawn). Slightly hunched, nervous, tired. Full body, feet at bottom.',
+      'A lone survivor character for an isometric nightrooms horror game, three-quarter FRONT view facing the camera, angled toward the lower-right, standing idle. Ordinary young adult, short practical hair, navy-blue short-sleeve shirt (#3b5b8c), brown work trousers (#6b4a2f), worn sneakers, holding a small handheld flashlight (beam not drawn). Slightly hunched, nervous, tired. Full body, feet at bottom.',
   },
   {
     key: 'survivor_back',
     file: 'survivor_idle_back.png',
     size: '1024x1536',
     prompt:
-      "A lone survivor character for an isometric backrooms horror game, three-quarter BACK view — we see their back and the back of their head — angled toward the upper-right, walking away, holding a flashlight forward (away from us). Navy short-sleeve shirt, brown trousers, worn sneakers. Full body, feet at bottom.",
+      "A lone survivor character for an isometric nightrooms horror game, three-quarter BACK view — we see their back and the back of their head — angled toward the upper-right, walking away, holding a flashlight forward (away from us). Navy short-sleeve shirt, brown trousers, worn sneakers. Full body, feet at bottom.",
   },
   {
     key: 'monster',
     file: 'monster_front.png',
     size: '1024x1536',
     prompt:
-      'A tall humanoid horror entity for an isometric backrooms game, three-quarter FRONT view facing the camera, angled lower-right. Near-black desaturated navy silhouette (#0a0a14), elongated thin limbs, hunched predatory posture, long arms, no face except two pale glowing cold white-blue eyes (#cfe8ff), a faint cold rim light on one edge. Reads as a living shadow. Full body, feet at bottom.',
+      'A tall humanoid horror entity for an isometric nightrooms game, three-quarter FRONT view facing the camera, angled lower-right. Near-black desaturated navy silhouette (#0a0a14), elongated thin limbs, hunched predatory posture, long arms, no face except two pale glowing cold white-blue eyes (#cfe8ff), a faint cold rim light on one edge. Reads as a living shadow. Full body, feet at bottom.',
   },
   {
     key: 'chaos',
     file: 'chaos_front.png',
     size: '1024x1536',
     prompt:
-      'A glitching trickster entity for an isometric backrooms game, three-quarter FRONT view, angled lower-right. Roughly humanoid like a survivor but corrupted: datamosh / VHS tracking-error coloring, magenta (#d026c9) and cyan (#2be2d8) chromatic-aberration split, scanline tearing across the body, flickering edges, a few shifted pixel-block artifacts, blank dark eyes. Reads as "a survivor rendered wrong." Full body, feet at bottom.',
+      'A glitching trickster entity for an isometric nightrooms game, three-quarter FRONT view, angled lower-right. Roughly humanoid like a survivor but corrupted: datamosh / VHS tracking-error coloring, magenta (#d026c9) and cyan (#2be2d8) chromatic-aberration split, scanline tearing across the body, flickering edges, a few shifted pixel-block artifacts, blank dark eyes. Reads as "a survivor rendered wrong." Full body, feet at bottom.',
   },
 ];

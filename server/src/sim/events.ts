@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { WorldEvent, WorldEventType } from '@backrooms/shared';
+import type { WorldEvent, WorldEventType } from '@nightrooms/shared';
 import { eventRepo } from '../db/repo.js';
 
 /**

@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@backrooms/shared';
-import type { Agent, EvidenceArtifact, MazeChunk } from '@backrooms/shared';
+import { CHUNK_SIZE, EDGE, TILE, chunkKey } from '@nightrooms/shared';
+import type { Agent, EvidenceArtifact, MazeChunk } from '@nightrooms/shared';
 import { WorldStore } from '../state/worldStore.js';
 import { Connection } from '../net/connection.js';
 import { WALL_H, WALL_T, ISO_DIR } from './iso.js';
@@ -113,7 +113,7 @@ export class ThreeWorld {
 
   constructor(private container: HTMLElement) {
     // Render at a fraction of native resolution and upscale with nearest-neighbour:
-    // big perf win (a quarter of the fragments) and the chunky, pixel-art backrooms
+    // big perf win (a quarter of the fragments) and the chunky, pixel-art nightrooms
     // look of the original idea. No AA + cheaper shadows for the same reasons.
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(RENDER_SCALE);
@@ -559,7 +559,7 @@ export class ThreeWorld {
 
   /**
    * Keep only the chunks near the followed agent loaded. Everything far is pitch
-   * black in the backrooms anyway, so dropping it costs nothing visually but keeps
+   * black in the nightrooms anyway, so dropping it costs nothing visually but keeps
    * draw calls, geometry and lights bounded no matter how far the agent roams —
    * this is what makes it run on any machine. Dropped chunks re-fetch on return.
    */

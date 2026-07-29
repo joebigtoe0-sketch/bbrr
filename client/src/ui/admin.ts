@@ -7,7 +7,7 @@ function log(msg: string) {
 
 function pw(): string {
   const v = $<HTMLInputElement>('pw').value;
-  sessionStorage.setItem('backrooms-admin', v);
+  sessionStorage.setItem('nightrooms-admin', v);
   return v;
 }
 
@@ -49,7 +49,7 @@ async function refreshAgents() {
   }
 }
 
-$<HTMLInputElement>('pw').value = sessionStorage.getItem('backrooms-admin') ?? '';
+$<HTMLInputElement>('pw').value = sessionStorage.getItem('nightrooms-admin') ?? '';
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>('button[data-event]')) {
   btn.onclick = () => {

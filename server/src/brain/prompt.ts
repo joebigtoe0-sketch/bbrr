@@ -1,4 +1,4 @@
-import type { Objective } from '@backrooms/shared';
+import type { Objective } from '@nightrooms/shared';
 import type { Observation } from './brain.js';
 
 /** Objectives phrased in-fiction. The agent never learns what this place is. */

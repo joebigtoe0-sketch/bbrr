@@ -1,4 +1,4 @@
-import type { AgentAction, BrainDecision, Objective } from '@backrooms/shared';
+import type { AgentAction, BrainDecision, Objective } from '@nightrooms/shared';
 import type { Brain, Observation } from './brain.js';
 import { rngFor, pick } from '../sim/rng.js';
 

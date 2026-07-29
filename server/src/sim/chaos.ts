@@ -1,4 +1,4 @@
-import { EDGE, AGENT_SPEED } from '@backrooms/shared';
+import { EDGE, AGENT_SPEED } from '@nightrooms/shared';
 import type { World } from './world.js';
 import { findPath } from './pathfinding.js';
 

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import { BrainDecisionSchema } from '@backrooms/shared';
-import type { BrainDecision, Objective } from '@backrooms/shared';
+import { BrainDecisionSchema } from '@nightrooms/shared';
+import type { BrainDecision, Objective } from '@nightrooms/shared';
 import { config } from '../config.js';
 import type { Brain, Observation } from './brain.js';
 import { MockBrain } from './mockBrain.js';

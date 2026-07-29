@@ -32,7 +32,7 @@ export async function writeCaseFile(a: AgentRuntime, cause: string) {
           {
             role: 'system',
             content:
-              'You write CASE FILES for residents who died in an endless backrooms maze. Third person, past tense, 90-150 words, the register of a coroner who has seen too much and started editorializing. Include what drove them, how they changed, what they left behind, and how it ended. No headers, no lists — one paragraph.',
+              'You write CASE FILES for residents who died in an endless nightrooms maze. Third person, past tense, 90-150 words, the register of a coroner who has seen too much and started editorializing. Include what drove them, how they changed, what they left behind, and how it ended. No headers, no lists — one paragraph.',
           },
           {
             role: 'user',

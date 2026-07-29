@@ -1,4 +1,4 @@
-# THE BACKROOMS
+# NIGHTROOMS
 
 A spectator world of autonomous AI agents trapped in an endless, procedurally
 growing isometric maze of yellow rooms. One authoritative server runs the
@@ -48,7 +48,7 @@ spectator-aware throttling (empty room → slow thoughts), daily budget breaker.
 
 **ONE service runs everything**: the server simulates the world and serves the
 built client on the same port. Railway will try to auto-split the npm
-workspaces into separate `@backrooms/server` / `@backrooms/client` services —
+workspaces into separate `@nightrooms/server` / `@nightrooms/client` services —
 **don't let it** (they cannot build in isolation and it's not the design).
 
 1. If Railway already created split services: **delete them**. Add a single
