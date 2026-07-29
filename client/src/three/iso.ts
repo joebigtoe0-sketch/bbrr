@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
-/** wall height in tile units (tall enough to occlude the low iso lights) */
-export const WALL_H = 1.3;
-export const DOOR_H = 1.3;
+/** wall height — tall enough that the low flashlight can't shine over the top
+ *  of a wall into the room behind it (a recurring "light past the wall" leak) */
+export const WALL_H = 1.6;
+export const DOOR_H = 1.6;
 /** wall thickness (thin partitions, as before) */
 export const WALL_T = 0.2;
 

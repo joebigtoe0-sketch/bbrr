@@ -537,7 +537,7 @@ export class ThreeWorld {
       const root = new THREE.Group();
       root.position.set(a.x, 0, a.y);
       this.scene.add(root);
-      const spot = new THREE.SpotLight(0xffe4ad, 150, 15, Math.PI / 4.1, 0.5, 1.1);
+      const spot = new THREE.SpotLight(0xffe4ad, 155, 15, Math.PI / 6, 0.6, 1.1);
       spot.castShadow = false;
       // high-res shadow map + normalBias so thin(ish) walls fully occlude the
       // beam instead of letting it bleed past their edges when aimed down a hall
@@ -595,7 +595,11 @@ export class ThreeWorld {
       gltf.scene.position.y = -box.min.y * s;
       this.npcTemplate = gltf.scene;
       this.npcClips = gltf.animations;
-      for (const o of this.agents.values()) if (!o.model) this.buildAgentModel(o, 0);
+      // build models for agents that arrived before the mesh loaded — with their
+      // REAL hue (passing 0 here made the whole first batch identical)
+      for (const [id, o] of this.agents) {
+        if (!o.model) this.buildAgentModel(o, this.store.agents.get(id)?.hue ?? 0);
+      }
       this.buildChaosModel();
     });
   }
@@ -684,13 +688,17 @@ export class ThreeWorld {
   private buildAgentModel(o: AgentObj, hue: number) {
     if (!this.npcTemplate) return;
     const model = skeletonClone(this.npcTemplate);
-    const tint = new THREE.Color().setHSL(((((hue % 360) + 360) % 360) / 360), 0.55, 0.62);
+    const tint = new THREE.Color().setHSL(((((hue % 360) + 360) % 360) / 360), 0.8, 0.6);
     model.traverse((n) => {
       const m = n as THREE.Mesh;
       if (m.isMesh) {
         m.castShadow = true;
         const mat = (m.material as THREE.MeshStandardMaterial).clone();
         mat.color.multiply(tint);
+        // a faint self-colour so each agent stays their own hue even in the dark
+        // (the warm flashlight otherwise washes everyone to the same grey)
+        mat.emissive = tint.clone();
+        mat.emissiveIntensity = 0.22;
         m.material = mat;
       }
     });
@@ -955,9 +963,11 @@ export class ThreeWorld {
       // the followed agent (whose light is shadow-contained) gets the big reach;
       // others get a short, dim beam so their un-shadowed light barely leaks
       const reach = followed ? 15 : 6.5;
-      o.spot.intensity = (followed ? 165 : 95) * bf;
+      o.spot.intensity = (followed ? 175 : 100) * bf;
       o.spot.distance = reach * bf;
-      o.target.position.set(o.gx + fd[0] * (reach * 0.2), 0.05, o.gy + fd[1] * (reach * 0.2));
+      // aim a bit closer/lower so the beam axis tilts down — keeps the cone's
+      // upper edge from rising over wall tops
+      o.target.position.set(o.gx + fd[0] * 2.4, 0.04, o.gy + fd[1] * 2.4);
     }
     // ---- monster: smooth move + procedural creature animation ----
     {
