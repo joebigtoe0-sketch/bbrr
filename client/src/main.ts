@@ -15,7 +15,30 @@ import {
 import type { Agent, WorldEvent } from '@backrooms/shared';
 
 const app = document.getElementById('app')!;
-const world = new ThreeWorld(app);
+
+function showFatal(msg: string) {
+  const d = document.createElement('div');
+  d.style.cssText =
+    'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#c9b458;font:14px/1.7 Consolas,monospace;padding:40px;z-index:200;background:#0a0a08';
+  d.innerHTML = `<div style="max-width:460px">${msg}</div>`;
+  document.body.appendChild(d);
+}
+
+// Three.js r169 needs WebGL2 (Safari 15+). Fail loudly instead of a blank screen,
+// and never let a rendering/audio hiccup take down the whole page.
+let world: ThreeWorld;
+try {
+  if (!document.createElement('canvas').getContext('webgl2')) {
+    throw new Error('WebGL2 unavailable');
+  }
+  world = new ThreeWorld(app);
+} catch (err) {
+  showFatal(
+    'THE BACKROOMS needs a browser with <b>WebGL2</b>.<br><br>' +
+      'Please update to Safari 15+ (or newer macOS/iOS), or open this in Chrome or Firefox.',
+  );
+  throw err;
+}
 const store = world.store;
 
 // overlay layer for in-world HTML (labels, thoughts)
@@ -237,16 +260,19 @@ setInterval(() => {
 
 // ---------------- audio volume ----------------
 {
+  // localStorage can throw in Safari private mode — never let it break boot
+  const lsGet = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+  const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
   const bg = document.getElementById('vol-bg') as HTMLInputElement;
   const sfx = document.getElementById('vol-sfx') as HTMLInputElement;
-  const savedBg = Number(localStorage.getItem('backrooms-vol-bg') ?? '50');
-  const savedSfx = Number(localStorage.getItem('backrooms-vol-sfx') ?? '70');
+  const savedBg = Number(lsGet('backrooms-vol-bg', '50'));
+  const savedSfx = Number(lsGet('backrooms-vol-sfx', '70'));
   bg.value = String(savedBg);
   sfx.value = String(savedSfx);
   world.setBgVol(savedBg / 100);
   world.setSfxVol(savedSfx / 100);
-  bg.oninput = () => { world.setBgVol(Number(bg.value) / 100); localStorage.setItem('backrooms-vol-bg', bg.value); };
-  sfx.oninput = () => { world.setSfxVol(Number(sfx.value) / 100); localStorage.setItem('backrooms-vol-sfx', sfx.value); };
+  bg.oninput = () => { world.setBgVol(Number(bg.value) / 100); lsSet('backrooms-vol-bg', bg.value); };
+  sfx.oninput = () => { world.setSfxVol(Number(sfx.value) / 100); lsSet('backrooms-vol-sfx', sfx.value); };
 }
 
 // ---------------- contract address ----------------

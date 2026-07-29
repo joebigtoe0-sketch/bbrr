@@ -148,7 +148,11 @@ export class ThreeWorld {
     window.addEventListener('resize', () => this.resize());
     this.loadNpcModel();
     this.loadMonsterModel();
-    this.initAudio();
+    try {
+      this.initAudio();
+    } catch (err) {
+      console.warn('[audio] init failed (non-fatal):', err);
+    }
     this.wireStore();
     this.wireInput();
     this.conn.onOpen = () => {};
@@ -505,12 +509,16 @@ export class ThreeWorld {
 
   /** Web Audio needs a user gesture; call this from the first pointer input. */
   private resumeAudio() {
-    if (this.audioStarted) return;
+    if (this.audioStarted || !this.listener) return;
     this.audioStarted = true;
-    void this.listener?.context.resume();
-    if (this.ambientAudio?.buffer && !this.ambientAudio.isPlaying) this.ambientAudio.play();
-    if (this.footstepAudio?.buffer && !this.footstepAudio.isPlaying) this.footstepAudio.play();
-    this.beepTimer = window.setInterval(() => this.beepTerminals(), 5000);
+    try {
+      void this.listener.context.resume();
+      if (this.ambientAudio?.buffer && !this.ambientAudio.isPlaying) this.ambientAudio.play();
+      if (this.footstepAudio?.buffer && !this.footstepAudio.isPlaying) this.footstepAudio.play();
+      this.beepTimer = window.setInterval(() => this.beepTerminals(), 5000);
+    } catch (err) {
+      console.warn('[audio] resume failed (non-fatal):', err);
+    }
   }
 
   /** every terminal chirps; the positional falloff means you only HEAR the near ones */
