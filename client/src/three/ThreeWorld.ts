@@ -647,8 +647,9 @@ export class ThreeWorld {
         if (m.isMesh) {
           m.castShadow = true;
           const mat = (m.material as THREE.MeshStandardMaterial).clone();
-          mat.color.multiplyScalar(0.35); // a dark thing that only shows when lit
-          mat.emissive = new THREE.Color(0x000000);
+          mat.color.multiplyScalar(0.32); // a dark thing that only shows when lit
+          mat.emissive = new THREE.Color(0x360808); // faint red self-glow all over
+          mat.emissiveIntensity = 1;
           mat.roughness = 1;
           m.material = mat;
         }
@@ -669,21 +670,12 @@ export class ThreeWorld {
       this.monster.add(model);
       this.monsterModel = model;
 
-      // two red eyes + a faint red glow, so it's barely visible in the dark.
-      // MeshBasic = self-lit (always red); the glow lets it bleed into the black.
+      // a soft red glow around the whole thing so you can just make it out in the
+      // dark (no eyes — those read wrong)
       const sz = size.clone().multiplyScalar(s);
-      const eyeY = sz.y * 0.82;
-      const eyeZ = sz.z * 0.32;
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1515 });
-      const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
-      for (const ex of [-sz.x * 0.14, sz.x * 0.14]) {
-        const eye = new THREE.Mesh(eyeGeo, eyeMat);
-        eye.position.set(ex, eyeY, eyeZ);
-        this.monster.add(eye);
-      }
-      const eyeGlow = new THREE.PointLight(0xff1a1a, 2.4, 3.4, 1.6);
-      eyeGlow.position.set(0, eyeY, eyeZ * 0.7);
-      this.monster.add(eyeGlow);
+      const glow = new THREE.PointLight(0xff2222, 1.7, 3.8, 1.8);
+      glow.position.set(0, sz.y * 0.5, 0);
+      this.monster.add(glow);
     });
   }
 
