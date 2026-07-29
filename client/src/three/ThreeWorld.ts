@@ -192,6 +192,44 @@ export class ThreeWorld {
     return t;
   }
 
+  /** a messy scrawl of pale strokes — looks like scribbled graffiti, not a square */
+  private graffitiTexture(seed: string): THREE.Texture {
+    const key = `graf:${seed}`;
+    let t = this.texCache.get(key);
+    if (t) return t;
+    let s = strHash(seed) || 1;
+    const rnd = () => {
+      s = (s * 1664525 + 1013904223) & 0x7fffffff;
+      return s / 0x7fffffff;
+    };
+    t = this.canvasTex((ctx, size) => {
+      ctx.clearRect(0, 0, size, size);
+      ctx.strokeStyle = 'rgba(224,220,205,0.95)';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const strokes = 3 + Math.floor(rnd() * 4);
+      for (let i = 0; i < strokes; i++) {
+        ctx.lineWidth = 1.5 + rnd() * 3;
+        ctx.beginPath();
+        let x = size * (0.15 + rnd() * 0.2);
+        let y = size * (0.2 + rnd() * 0.6);
+        ctx.moveTo(x, y);
+        const segs = 4 + Math.floor(rnd() * 6);
+        for (let j = 0; j < segs; j++) {
+          x += size * (0.06 + rnd() * 0.12);
+          y += size * (rnd() - 0.5) * 0.4;
+          ctx.lineTo(x, Math.max(4, Math.min(size - 4, y)));
+        }
+        ctx.stroke();
+      }
+      // a few stray flecks
+      ctx.fillStyle = 'rgba(224,220,205,0.8)';
+      for (let i = 0; i < 12; i++) ctx.fillRect(size * rnd(), size * rnd(), 2, 2);
+    }, 96);
+    this.texCache.set(key, t);
+    return t;
+  }
+
   private monsterTexture() {
     return this.canvasTex((ctx, s) => {
       ctx.fillStyle = '#0a0a12';
@@ -753,14 +791,16 @@ export class ThreeWorld {
         }),
       );
     } else if (e.kind === 'graffiti') {
-      // a spray splash on the floor — faint red glow so the writing catches the eye
-      const geo = new THREE.PlaneGeometry(0.7, 0.7);
+      // a messy pale scrawl on the floor — faintly self-lit so it catches the eye
+      const geo = new THREE.PlaneGeometry(0.95, 0.95);
       geo.rotateX(-Math.PI / 2);
+      geo.rotateY(((e.id.charCodeAt(1) ?? 0) % 8) * 0.4);
+      const tex = this.graffitiTexture(e.id);
       obj = new THREE.Mesh(
         geo,
         new THREE.MeshStandardMaterial({
-          color: 0xc23b2e, roughness: 1, transparent: true, opacity: 0.9,
-          emissive: new THREE.Color(0x8a2018), emissiveIntensity: 0.6,
+          map: tex, transparent: true, alphaTest: 0.02, roughness: 1,
+          emissive: new THREE.Color(0xbfb8a8), emissiveMap: tex, emissiveIntensity: 0.75,
         }),
       );
     } else {

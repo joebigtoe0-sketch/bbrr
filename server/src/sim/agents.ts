@@ -415,21 +415,23 @@ export function tickAgent(world: World, a: AgentRuntime, dtMs: number, now: numb
     }
   }
 
-  // hunt-flee reflex: seeing the thing mid-hunt overrides whatever the
-  // brain was doing - they RUN, immediately, no 15s decision wait
+  // flee reflex: overrides whatever the brain was doing — RUN immediately, no
+  // 15s decision wait. Fires when the thing is hunting THIS agent, OR simply
+  // when it's visible and too close (you don't calmly chat next to it, even if
+  // it hasn't locked on yet).
   const m = world.monsterRt;
-  if (
-    a.monsterVisible &&
-    m.mode === 'hunt' &&
-    m.targetAgentId === a.id &&
-    now >= a.fleeingUntil - 3500 // re-steer at most every ~0.5s while fleeing
-  ) {
+  const monsterDist = Math.hypot(a.x - m.x, a.y - m.y);
+  const beingHunted = m.mode === 'hunt' && m.targetAgentId === a.id;
+  // visible & near, OR so close you'd sense it even around a corner
+  const tooClose = (a.monsterVisible && monsterDist < 5.5) || monsterDist < 3.5;
+  if ((beingHunted || tooClose) && now >= a.fleeingUntil - 3500) {
     a.fleeingUntil = now + 4000;
     const dx = a.x - m.x;
     const dy = a.y - m.y;
     const len = Math.max(0.01, Math.hypot(dx, dy));
     startPath(world, a, Math.round(a.x + (dx / len) * 14), Math.round(a.y + (dy / len) * 14));
-    a.lastActionResult = 'you ran from it';
+    a.lastActionResult = beingHunted ? 'you ran from it' : 'it was right there — you bolted';
+    if (tooClose && !beingHunted) a.stress = Math.min(100, a.stress + 12);
   }
 
   // movement

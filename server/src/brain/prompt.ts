@@ -80,6 +80,10 @@ export function userPrompt(obs: Observation): string {
     lines.push(
       `IT IS CHASING YOU. RIGHT NOW. ${obs.monsterDistance} steps behind and closing. RUN. Your thought should be short, breathless, fragmentary. Choose "flee" unless you see a genuinely smarter escape (a door to slam, a lit sector, a corner to break its line of sight).`,
     );
+  else if (obs.monsterNearby && obs.monsterDistance <= 6)
+    lines.push(
+      `IT IS RIGHT THERE — about ${obs.monsterDistance} steps away and you can see its shape in the dark. Do NOT linger, do NOT talk. Put distance between you and it NOW: "flee", or move the opposite way.`,
+    );
   else if (obs.monsterNearby)
     lines.push('DANGER: something enormous is moving nearby. You can hear it through the walls.');
   if (obs.heard.length > 0) lines.push(`YOU JUST HEARD: ${obs.heard.join(' | ')}`);
