@@ -41,6 +41,7 @@ interface AgentObj {
   danceUntil: number;
   nextDanceCheck: number;
   queue: { x: number; y: number }[];
+  lastMoveMs: number; // last time the body actually advanced (for stable walk anim)
 }
 
 function strHash(s: string): number {
@@ -569,6 +570,7 @@ export class ThreeWorld {
         danceUntil: 0,
         nextDanceCheck: 0,
         queue: [],
+        lastMoveMs: 0,
       };
       this.agents.set(a.id, o);
       if (this.npcTemplate) this.buildAgentModel(o, a.hue);
@@ -925,8 +927,10 @@ export class ThreeWorld {
         if (d <= budget) { o.gx = t.x; o.gy = t.y; budget -= d; o.queue.shift(); }
         else { o.gx += ((t.x - o.gx) / d) * budget; o.gy += ((t.y - o.gy) / d) * budget; budget = 0; }
       }
-      const inst = Math.hypot(o.gx - px, o.gy - py) / (dt || 0.016);
+      const stepDist = Math.hypot(o.gx - px, o.gy - py);
+      const inst = stepDist / (dt || 0.016);
       o.speed += (inst - o.speed) * 0.25;
+      if (stepDist > 0.0015) o.lastMoveMs = nowMs; // it actually advanced this frame
       // only the followed agent casts flashlight shadows (keeps the framerate up)
       const followed = o === this.agents.get(this.followId ?? '');
       if (o.spot.castShadow !== followed) o.spot.castShadow = followed;
@@ -936,9 +940,11 @@ export class ThreeWorld {
       while (dr > Math.PI) dr -= Math.PI * 2;
       while (dr < -Math.PI) dr += Math.PI * 2;
       o.root.rotation.y += dr * Math.min(1, dt * 10);
-      // drive the walk cycle off ACTUAL motion, not the server 'moving' flag —
-      // that flag can stick, leaving an agent 'walking' on the spot
-      const movingNow = o.queue.length > 0 || o.speed > 0.4;
+      // walk while the body has moved recently (grace window). Based on ACTUAL
+      // motion so it never moonwalks in place, but the 260ms grace keeps it from
+      // flickering idle<->walk between the 10Hz position updates (which restarted
+      // the walk clip every frame — "only a few frames" of animation).
+      const movingNow = nowMs - o.lastMoveMs < 260;
       let anim: string;
       if (o.state === 'dead') anim = 'Dead';
       else if (movingNow && o.speed > 1.75) anim = 'Running';

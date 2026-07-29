@@ -125,6 +125,12 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
 
   const md = Math.hypot(world.monster.x - a.x, world.monster.y - a.y);
 
+  // everyone this agent has actually met/spoken with, most recent first
+  const knownPeople = Object.entries(a.people)
+    .sort((p, q) => q[1].tick - p[1].tick)
+    .slice(0, 6)
+    .map(([name, v]) => ({ name, note: v.note }));
+
   return {
     name: a.name,
     objective: a.objective,
@@ -141,9 +147,10 @@ export function buildObservation(world: World, a: AgentRuntime): Observation {
     beingChased:
       world.monsterRt.mode === 'hunt' && world.monsterRt.targetAgentId === a.id,
     monsterDistance: Math.round(md),
-    heard: a.heardSinceLastDecision.slice(-4),
+    heard: a.heardSinceLastDecision.slice(-6),
+    knownPeople,
     memorySummary: a.memory.summary,
-    memoryNotes: a.memory.notes.slice(-8),
+    memoryNotes: a.memory.notes.slice(-12),
     lastActionResult: a.lastActionResult,
     recentActions: a.recentActions.slice(-3),
     hasTerminalNearby,

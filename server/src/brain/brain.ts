@@ -18,6 +18,7 @@ export interface Observation {
   beingChased: boolean;
   monsterDistance: number;
   heard: string[]; // things said to/near this agent since last decision
+  knownPeople: { name: string; note: string }[]; // people met + last thing between them
   memorySummary: string;
   memoryNotes: string[];
   lastActionResult: string;

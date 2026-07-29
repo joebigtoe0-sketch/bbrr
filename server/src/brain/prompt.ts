@@ -51,7 +51,12 @@ ACTION is one of:
 {"type":"flee"}
 - Talk is cheap in here. If you have agreed to do something, or said roughly the same thing twice, DO IT THIS TURN with a non-say action. Never choose "say" three turns in a row.
 - Graffiti is permanent and precious. Write on walls RARELY - only words worth outliving you, never twice in an hour, never where writing already covers the walls.
-- "memoryNote": one short line worth remembering later, if any.`;
+- "memoryNote": one short line worth remembering later, if any. Save something SPECIFIC — a decision, a discovery, a promise, a fact — not your mood.
+
+YOU ARE NOT NEW HERE. You carry everything below: what you have lived through, the people you have met, what you decided. Act like someone with a past and a plan:
+- Build on your memories. Follow through on what you decided or promised last time; do not re-decide settled things or re-introduce yourself to people you already know.
+- Use people's names. Treat someone you have spoken with differently from a stranger. Remember who helped you, who lied, who died.
+- Make PROGRESS toward your drive across turns, not the same loop. If a plan failed, try a different one.`;
 }
 
 export function userPrompt(obs: Observation): string {
@@ -77,16 +82,24 @@ export function userPrompt(obs: Observation): string {
     );
   else if (obs.monsterNearby)
     lines.push('DANGER: something enormous is moving nearby. You can hear it through the walls.');
-  if (obs.heard.length > 0) lines.push(`YOU HEARD: ${obs.heard.join(' | ')}`);
-  if (obs.memorySummary) lines.push(`OLDER MEMORIES: ${obs.memorySummary}`);
-  if (obs.memoryNotes.length > 0) lines.push(`RECENT MEMORIES: ${obs.memoryNotes.join(' | ')}`);
-  lines.push(`LAST ACTION RESULT: ${obs.lastActionResult}.`);
-  if (obs.recentActions.length > 0) {
-    lines.push(`YOUR LAST ACTIONS: ${obs.recentActions.join(', ')}.`);
-    if (obs.recentActions.filter((r) => r === 'say').length >= 2) {
-      lines.push('You have been talking and talking. DO something now: move somewhere, search, follow through on plans.');
-    }
+  if (obs.heard.length > 0) lines.push(`YOU JUST HEARD: ${obs.heard.join(' | ')}`);
+
+  // ---- everything the agent carries: memory, people, plan ----
+  lines.push('');
+  lines.push('--- WHAT YOU CARRY ---');
+  if (obs.knownPeople.length > 0) {
+    lines.push(
+      `PEOPLE YOU KNOW: ${obs.knownPeople.map((p) => `${p.name} (${p.note})`).join('; ')}.`,
+    );
   }
-  lines.push('Decide what you do next. JSON only.');
+  if (obs.memorySummary) lines.push(`YOUR STORY SO FAR: ${obs.memorySummary}`);
+  if (obs.memoryNotes.length > 0) lines.push(`YOU REMEMBER: ${obs.memoryNotes.join(' | ')}`);
+  if (obs.recentActions.length > 0) lines.push(`YOUR LAST FEW ACTIONS: ${obs.recentActions.join(' -> ')}.`);
+  lines.push(`RESULT OF YOUR LAST ACTION: ${obs.lastActionResult}.`);
+  if (obs.recentActions.filter((r) => r === 'say').length >= 2) {
+    lines.push('You have been talking and talking. DO something now: move, search, or follow through on what you said.');
+  }
+  lines.push('');
+  lines.push('Given all of the above — your past, your people, your drive — decide your single next action. Make it count and move your story forward. JSON only.');
   return lines.join('\n');
 }

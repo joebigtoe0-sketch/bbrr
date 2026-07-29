@@ -263,6 +263,7 @@ export class World {
       nextDecisionAt: now + 2000 + Math.random() * 4000,
       deciding: false,
       memory: { summary: '', notes: [] },
+      people: {},
       decisionCount: 0,
       thoughtCount: 0,
       spawnedAtMs: now,
@@ -323,6 +324,7 @@ export class World {
       if (w.id === a.id || w.state === 'dead') continue;
       if (Math.hypot(w.x - a.x, w.y - a.y) <= 12) {
         w.stress = Math.min(100, w.stress + 40);
+        this.notePerson(w, a.name, `is DEAD — you watched the thing take them`);
         this.addMemoryNote(w, `You watched ${a.name} die. It was over in seconds.`);
       }
     }
@@ -527,9 +529,17 @@ export class World {
       ) {
         const directed = toAgentName && other.name.toLowerCase() === toAgentName.toLowerCase();
         other.heardSinceLastDecision.push(`${a.name}${directed ? ' (to you)' : ''}: "${text}"`);
-        this.addMemoryNote(other, `${a.name} said: "${text}"`);
+        // remember it against the person, not as a loose note
+        this.notePerson(other, a.name, directed ? `just told you: "${text}"` : `said nearby: "${text}"`);
+        if (directed) this.notePerson(a, other.name, `you told them: "${text}"`);
       }
     }
+  }
+
+  /** record what an agent now knows about a specific other person */
+  notePerson(a: AgentRuntime, name: string | undefined, note: string) {
+    if (!name) return;
+    a.people[name] = { note, tick: this.tick };
   }
 
   postToTerminal(a: AgentRuntime, crt: EvidenceArtifact, text: string) {
@@ -576,10 +586,12 @@ export class World {
   }
 
   addMemoryNote(a: AgentRuntime, note: string) {
+    // avoid storing a near-duplicate of the most recent note
+    if (a.memory.notes[a.memory.notes.length - 1] === note) return;
     a.memory.notes.push(note);
-    if (a.memory.notes.length > 12) {
-      const folded = a.memory.notes.splice(0, 6);
-      a.memory.summary = (a.memory.summary + ' ' + folded.join(' ')).trim().slice(-600);
+    if (a.memory.notes.length > 18) {
+      const folded = a.memory.notes.splice(0, 8);
+      a.memory.summary = (a.memory.summary + ' ' + folded.join(' ')).trim().slice(-1100);
     }
     memoryRepo.set(a.id, a.memory.summary, a.memory.notes);
   }
@@ -789,6 +801,7 @@ export class World {
         nextDecisionAt: now + 2000 + Math.random() * 8000,
         deciding: false,
         memory: mem,
+        people: {},
         decisionCount: 0,
         thoughtCount: 0,
         spawnedAtMs: row.created_at,

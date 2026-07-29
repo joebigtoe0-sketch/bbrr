@@ -35,6 +35,8 @@ export interface AgentRuntime {
   nextDecisionAt: number;
   deciding: boolean;
   memory: { summary: string; notes: string[] };
+  /** what this agent knows about specific others: name -> last impression/exchange */
+  people: Record<string, { note: string; tick: number }>;
   decisionCount: number;
   thoughtCount: number;
   spawnedAtMs: number;
