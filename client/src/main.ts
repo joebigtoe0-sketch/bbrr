@@ -278,7 +278,7 @@ setInterval(() => {
 
 // ---------------- social + contract address ----------------
 // the account the X badge (bottom-left) links to. change to your real handle.
-const X_URL = 'https://x.com/nightrooms';
+const X_URL = 'https://x.com/nightroomsfun';
 {
   const x = document.getElementById('x-link') as HTMLAnchorElement | null;
   if (x) x.href = X_URL;

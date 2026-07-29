@@ -231,7 +231,7 @@ export async function refreshTweets() {
     $('right-content').innerHTML = (data.tweets ?? [])
       .map(
         (tw: { text: string; kind: string; created_at: number }) =>
-          `<div class="tweet-card">${esc(tw.text)}<div class="meta">@the_nightrooms · ${tw.kind} · ${new Date(tw.created_at).toLocaleTimeString([], { hour12: false })}</div></div>`,
+          `<div class="tweet-card">${esc(tw.text)}<div class="meta">@nightroomsfun · ${tw.kind} · ${new Date(tw.created_at).toLocaleTimeString([], { hour12: false })}</div></div>`,
       )
       .join('') || '<div class="log-line">the maze has said nothing yet.</div>';
   } catch {

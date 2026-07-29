@@ -30,7 +30,7 @@ const EnvSchema = z.object({
   // MASTER SWITCH: 'mock' = no network at all (mentions come only from the admin
   // panel, posts just log). 'live' = the reader/poster below turn on per their keys.
   X_MODE: z.enum(['mock', 'live']).default('mock'),
-  X_HANDLE: z.string().default('nightrooms'), // our account handle, no '@'
+  X_HANDLE: z.string().default('nightroomsfun'), // our account handle, no '@'
   // -- reader (incoming mentions) --
   X_BEARER_TOKEN: z.string().default(''), // official API app bearer (reads mentions)
   X_USER_ID: z.string().default(''), // optional; else looked up from the handle + cached
