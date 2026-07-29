@@ -60,6 +60,8 @@ const FACE_ROT: Record<string, number> = {
 };
 
 const VIEW_SIZE = 14; // world units visible vertically at zoom 1
+/** internal render resolution as a fraction of screen — lower = chunkier + faster */
+const RENDER_SCALE = 0.5;
 
 export class ThreeWorld {
   readonly store = new WorldStore();
@@ -109,10 +111,14 @@ export class ThreeWorld {
   private monsterNear = false;
 
   constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    // Render at a fraction of native resolution and upscale with nearest-neighbour:
+    // big perf win (a quarter of the fragments) and the chunky, pixel-art backrooms
+    // look of the original idea. No AA + cheaper shadows for the same reasons.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(RENDER_SCALE);
+    this.renderer.domElement.style.imageRendering = 'pixelated';
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setClearColor(0x040406, 1);
     this.scene.fog = new THREE.Fog(0x040406, 34, 74);
     container.appendChild(this.renderer.domElement);
@@ -535,11 +541,13 @@ export class ThreeWorld {
       spot.castShadow = false;
       // high-res shadow map + normalBias so thin(ish) walls fully occlude the
       // beam instead of letting it bleed past their edges when aimed down a hall
-      spot.shadow.mapSize.set(2048, 2048);
+      spot.shadow.mapSize.set(1024, 1024);
       spot.shadow.camera.near = 0.1;
       spot.shadow.camera.far = 18;
-      spot.shadow.bias = -0.0008;
-      spot.shadow.normalBias = 0.018;
+      // small biases: too much normalBias detaches the shadow from the wall
+      // (peter-panning — a lit gap appears right behind the wall)
+      spot.shadow.bias = -0.0004;
+      spot.shadow.normalBias = 0.004;
       const target = new THREE.Object3D();
       this.scene.add(spot, target);
       spot.target = target;
@@ -654,6 +662,22 @@ export class ThreeWorld {
       this.monsterLegRest = this.monsterLegs.map((b) => b.rotation.x);
       this.monster.add(model);
       this.monsterModel = model;
+
+      // two red eyes + a faint red glow, so it's barely visible in the dark.
+      // MeshBasic = self-lit (always red); the glow lets it bleed into the black.
+      const sz = size.clone().multiplyScalar(s);
+      const eyeY = sz.y * 0.82;
+      const eyeZ = sz.z * 0.32;
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff1515 });
+      const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
+      for (const ex of [-sz.x * 0.14, sz.x * 0.14]) {
+        const eye = new THREE.Mesh(eyeGeo, eyeMat);
+        eye.position.set(ex, eyeY, eyeZ);
+        this.monster.add(eye);
+      }
+      const eyeGlow = new THREE.PointLight(0xff1a1a, 2.4, 3.4, 1.6);
+      eyeGlow.position.set(0, eyeY, eyeZ * 0.7);
+      this.monster.add(eyeGlow);
     });
   }
 
@@ -904,7 +928,9 @@ export class ThreeWorld {
       while (dr > Math.PI) dr -= Math.PI * 2;
       while (dr < -Math.PI) dr += Math.PI * 2;
       o.root.rotation.y += dr * Math.min(1, dt * 10);
-      const movingNow = o.state === 'moving' || o.queue.length > 0 || o.speed > 0.2;
+      // drive the walk cycle off ACTUAL motion, not the server 'moving' flag —
+      // that flag can stick, leaving an agent 'walking' on the spot
+      const movingNow = o.queue.length > 0 || o.speed > 0.4;
       let anim: string;
       if (o.state === 'dead') anim = 'Dead';
       else if (movingNow && o.speed > 1.75) anim = 'Running';
