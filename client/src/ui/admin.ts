@@ -104,6 +104,24 @@ $('post-out').onclick = () => {
   $<HTMLInputElement>('post-text').value = '';
 };
 
+async function loadCa() {
+  try {
+    const res = await fetch('/api/meta');
+    const data = await res.json();
+    if (typeof data.contractAddress === 'string') $<HTMLInputElement>('ca-input').value = data.contractAddress;
+  } catch {
+    // ignore
+  }
+}
+
+$('ca-save').onclick = () =>
+  post('/api/admin/ca', { ca: $<HTMLInputElement>('ca-input').value.trim() });
+
+$('ca-clear').onclick = () => {
+  $<HTMLInputElement>('ca-input').value = '';
+  post('/api/admin/ca', { ca: '' });
+};
+
 $('full-reset').onclick = () => {
   if (!confirm('Wipe EVERYTHING? All agents, graffiti, corpses, terminal logs — the entire archive. A fresh maze boots with a new seed.')) return;
   if (!confirm('Last chance. This cannot be undone.')) return;
@@ -113,3 +131,4 @@ $('full-reset').onclick = () => {
 
 refreshAgents();
 setInterval(refreshAgents, 10000);
+loadCa();

@@ -126,10 +126,11 @@ store.onSpeech = (agentId, text) => {
 // when on, the camera follows wherever the drama is: proximity to the monster,
 // panic, someone being hunted. hunts snap instantly; otherwise it drifts on a
 // timer with hysteresis so it doesn't flicker between agents.
-let directorOn = false;
+let directorOn = true; // on by default — new arrivals land straight into the drama
 let lastDirectorSwitch = 0;
 let deathHoldUntil = 0; // stay on a dying agent this long so the death is seen
 const dirBtn = document.getElementById('director') as HTMLButtonElement;
+dirBtn.classList.toggle('active', directorOn);
 dirBtn.onclick = () => {
   directorOn = !directorOn;
   dirBtn.classList.toggle('active', directorOn);
@@ -283,17 +284,31 @@ const X_URL = 'https://x.com/nightrooms';
   if (x) x.href = X_URL;
 }
 
-// set once the token launches. left as a placeholder until then.
-const CONTRACT_ADDRESS = '';
+// the contract address is set at runtime from the admin panel (stored server-side),
+// so it can go live without a redeploy. we fetch it and poll for changes.
 {
   const val = document.getElementById('ca-val')!;
   const copy = document.getElementById('ca-copy') as HTMLButtonElement;
-  val.textContent = CONTRACT_ADDRESS || 'not live yet';
-  if (!CONTRACT_ADDRESS) copy.disabled = true;
-  copy.onclick = async () => {
-    if (!CONTRACT_ADDRESS) return;
+  let contractAddress = '';
+  const apply = (ca: string) => {
+    contractAddress = ca;
+    val.textContent = ca || 'not live yet';
+    copy.disabled = !ca;
+  };
+  apply('');
+  const load = async () => {
     try {
-      await navigator.clipboard.writeText(CONTRACT_ADDRESS);
+      const res = await fetch('/api/meta');
+      const data = await res.json();
+      if (typeof data.contractAddress === 'string') apply(data.contractAddress);
+    } catch { /* offline; keep last value */ }
+  };
+  void load();
+  setInterval(load, 30000);
+  copy.onclick = async () => {
+    if (!contractAddress) return;
+    try {
+      await navigator.clipboard.writeText(contractAddress);
       copy.textContent = 'COPIED';
       copy.classList.add('copied');
       setTimeout(() => { copy.textContent = 'COPY'; copy.classList.remove('copied'); }, 1400);

@@ -6,7 +6,7 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db/db.js';
 import { AdminDebugBody, AdminEventBody, AdminTweetBody, SpawnAgentBody } from '@nightrooms/shared';
 import { config, isDev } from '../config.js';
-import { agentRepo, caseFileRepo, eventRepo, thoughtRepo, tweetRepo } from '../db/repo.js';
+import { agentRepo, caseFileRepo, eventRepo, kv, thoughtRepo, tweetRepo } from '../db/repo.js';
 import type { World } from '../sim/world.js';
 import type { BrainScheduler } from '../brain/scheduler.js';
 import type { XClient } from '../social/x.js';
@@ -129,6 +129,20 @@ export function buildRest(world: World, scheduler: BrainScheduler, x?: XClient):
 
   app.get('/api/tweets', (_req, res) => {
     res.json({ tweets: tweetRepo.latest(50) });
+  });
+
+  // public runtime config the client reads (currently just the contract address).
+  // stored in the DB so it survives restarts and needs no redeploy to change.
+  app.get('/api/meta', (_req, res) => {
+    res.json({ contractAddress: kv.get('contractAddress') ?? '' });
+  });
+
+  // set/clear the contract address at runtime from the admin panel
+  app.post('/api/admin/ca', requireAdmin, (req, res) => {
+    const ca = typeof req.body?.ca === 'string' ? req.body.ca.trim() : '';
+    kv.set('contractAddress', ca);
+    console.log(`[admin] contract address ${ca ? `set to ${ca}` : 'cleared'}`);
+    res.json({ ok: true, contractAddress: ca });
   });
 
   // the LOG's back-history: recent thoughts + world events merged chronologically,

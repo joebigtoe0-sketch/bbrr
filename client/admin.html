@@ -55,6 +55,15 @@
     </div>
 
     <div class="section">
+      <label>Contract address — shows in the CA box on the site (saved, no redeploy)</label>
+      <input id="ca-input" type="text" placeholder="paste token contract address…" />
+      <div class="grid">
+        <button id="ca-save">💾 SAVE CA</button>
+        <button id="ca-clear" style="border-color:#6b6340;color:#8a7d3a">CLEAR</button>
+      </div>
+    </div>
+
+    <div class="section">
       <label>Incoming tweet — a mock @mention / reply the maze "hears"</label>
       <div class="row">
         <input id="tw-handle" type="text" placeholder="handle (no @)" value="tester" style="flex:0 0 130px" />
