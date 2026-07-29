@@ -740,21 +740,28 @@ export class ThreeWorld {
     if (existing) this.scene.remove(existing);
     let obj: THREE.Object3D;
     if (e.kind === 'note' || e.kind === 'printout') {
-      // a paper scrap lying on the floor
-      const geo = new THREE.PlaneGeometry(0.45, 0.55);
+      // a paper scrap on the floor — faintly self-lit so it's spottable in the dark
+      const geo = new THREE.PlaneGeometry(0.62, 0.76);
       geo.rotateX(-Math.PI / 2);
       geo.rotateY((e.id.charCodeAt(0) % 8) * 0.3);
+      const tex = this.tex('/sprites/generated/note.png');
       obj = new THREE.Mesh(
         geo,
-        new THREE.MeshStandardMaterial({ map: this.tex('/sprites/generated/note.png'), transparent: true, alphaTest: 0.3, roughness: 1 }),
+        new THREE.MeshStandardMaterial({
+          map: tex, transparent: true, alphaTest: 0.3, roughness: 1,
+          emissive: new THREE.Color(0x4a4636), emissiveMap: tex, emissiveIntensity: 0.7,
+        }),
       );
     } else if (e.kind === 'graffiti') {
-      // a small spray splash on the floor
-      const geo = new THREE.PlaneGeometry(0.55, 0.55);
+      // a spray splash on the floor — faint red glow so the writing catches the eye
+      const geo = new THREE.PlaneGeometry(0.7, 0.7);
       geo.rotateX(-Math.PI / 2);
       obj = new THREE.Mesh(
         geo,
-        new THREE.MeshStandardMaterial({ color: 0xc23b2e, roughness: 1, transparent: true, opacity: 0.85 }),
+        new THREE.MeshStandardMaterial({
+          color: 0xc23b2e, roughness: 1, transparent: true, opacity: 0.9,
+          emissive: new THREE.Color(0x8a2018), emissiveIntensity: 0.6,
+        }),
       );
     } else {
       const url = EVIDENCE_TEX[e.kind];
