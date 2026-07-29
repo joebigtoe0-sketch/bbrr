@@ -26,20 +26,23 @@ const EnvSchema = z.object({
   DB_PATH: z.string().default('backrooms.db'),
   NODE_ENV: z.string().default('development'),
 
-  // ---------- X / Twitter integration ----------
-  // 'mock' = no network; tweets come only from the admin panel and nothing is
-  // posted out. 'live' = post maze utterances to X and poll mentions/replies.
+  // ---------- X / Twitter integration (ported from the universe project) ----------
+  // MASTER SWITCH: 'mock' = no network at all (mentions come only from the admin
+  // panel, posts just log). 'live' = the reader/poster below turn on per their keys.
   X_MODE: z.enum(['mock', 'live']).default('mock'),
   X_HANDLE: z.string().default('backrooms'), // our account handle, no '@'
-  X_USER_ID: z.string().default(''), // numeric id of our account (for mentions lookup)
-  X_BEARER_TOKEN: z.string().default(''), // app bearer, for reading mentions
-  X_APP_KEY: z.string().default(''), // OAuth1.0a consumer key
-  X_APP_SECRET: z.string().default(''),
-  X_ACCESS_TOKEN: z.string().default(''), // OAuth1.0a user token (our account)
+  // -- reader (incoming mentions) --
+  X_BEARER_TOKEN: z.string().default(''), // official API app bearer (reads mentions)
+  TWITTERAPI_IO_KEY: z.string().default(''), // optional cheaper 3rd-party read proxy
+  X_USER_ID: z.string().default(''), // optional; else looked up from the handle + cached
+  X_READ_POLL_MIN: z.coerce.number().default(2), // minutes between mention polls
+  // -- poster (outgoing tweets, official API + OAuth 1.0a) --
+  X_POST: z.enum(['on', 'off']).default('off'), // must be 'on' AND keys set to post
+  X_CONSUMER_KEY: z.string().default(''),
+  X_CONSUMER_SECRET: z.string().default(''),
+  X_ACCESS_TOKEN: z.string().default(''),
   X_ACCESS_SECRET: z.string().default(''),
-  X_POLL_MS: z.coerce.number().default(90000), // how often to pull mentions
-  // post maze utterances out ('false' to disable; any other value = on)
-  X_POST_MAZE_TWEETS: z.string().default('true').transform((v) => v !== 'false'),
+  X_MAX_POST_LEN: z.coerce.number().default(272), // 280 minus a margin; raise with Premium
 });
 
 export const config = EnvSchema.parse(process.env);
